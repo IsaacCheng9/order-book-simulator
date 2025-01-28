@@ -24,5 +24,7 @@ jobs:
         uses: commitizen-tools/commitizen-action@master
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
+          # Avoid creating a CHANGELOG.md file.
+          changelog: false
       - name: Print version
         run: echo "Bumped to version ${{ steps.cz.outputs.version }}"
