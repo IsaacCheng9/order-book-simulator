@@ -7,7 +7,7 @@ authors = [
     { name = "Isaac Cheng", email = "47993930+IsaacCheng9@users.noreply.github.com" },
 ]
 requires-python = ">=3.13"
-dependencies = []
+dependencies = ["fastapi>=0.115.7"]
 
 [project.scripts]
 order-book-simulator = "order_book_simulator:main"
@@ -15,3 +15,9 @@ order-book-simulator = "order_book_simulator:main"
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
+
+[dependency-groups]
+dev = ["coverage>=7.6.10", "pytest>=8.3.4"]
+
+[tool.commitizen]
+version = "0.1.0"
