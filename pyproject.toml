@@ -1,0 +1,17 @@
+[project]
+description = "An order matching engine and market data system built in Python, designed to simulate real-world exchange trading mechanics. Processes limit orders with price-time priority, executes trades, and provides market data updates in real-time."
+name = "order-book-simulator"
+version = "0.1.0"
+readme = "README.md"
+authors = [
+    { name = "Isaac Cheng", email = "47993930+IsaacCheng9@users.noreply.github.com" },
+]
+requires-python = ">=3.13"
+dependencies = []
+
+[project.scripts]
+order-book-simulator = "order_book_simulator:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
