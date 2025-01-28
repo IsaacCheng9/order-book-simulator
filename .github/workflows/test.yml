@@ -30,9 +30,7 @@ jobs:
         run: uv sync --all-extras --dev
 
       - name: Run tests with Pytest
-        run:
-          uv run coverage run --source=src/order_book_simulator -m
-          pytest -v
+        run: uv run coverage run --source=src/ -m pytest -v
 
       - name: Get code coverage report
         run: uv run coverage report -m
