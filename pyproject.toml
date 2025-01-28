@@ -12,7 +12,6 @@ dependencies = ["fastapi>=0.115.7"]
 [project.scripts]
 order-book-simulator = "order_book_simulator:main"
 
-
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
