@@ -8,6 +8,14 @@ simulate real-world exchange trading mechanics. Processes limit orders with
 price-time priority, executes trades, and provides market data updates in
 real-time.
 
+## Components
+
+The system consists of three main components:
+
+- Gateway Service: Handles incoming orders and API interactions
+- Matching Engine: Processes orders and executes trades
+- Market Data Service: Manages market data dissemination
+
 ## Usage
 
 ### Installing Dependencies
