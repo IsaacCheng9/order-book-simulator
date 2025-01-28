@@ -7,7 +7,9 @@ authors = [
     { name = "Isaac Cheng", email = "47993930+IsaacCheng9@users.noreply.github.com" },
 ]
 requires-python = ">=3.13"
-dependencies = []
+dependencies = [
+    "fastapi>=0.115.7",
+]
 
 [project.scripts]
 order-book-simulator = "order_book_simulator:main"
