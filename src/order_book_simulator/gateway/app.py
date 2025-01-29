@@ -1,6 +1,6 @@
 from contextlib import asynccontextmanager
 from datetime import datetime
-from fastapi import FastAPI, Depends
+from fastapi import FastAPI, Depends, HTTPException
 
 from order_book_simulator.common.models import OrderRequest, OrderResponse
 from order_book_simulator.database.connection import get_db
@@ -10,20 +10,23 @@ from order_book_simulator.gateway.producer import OrderProducer
 
 class AppState:
     def __init__(self):
-        self.producer = OrderProducer()
+        self.producer: OrderProducer | None = None
+
+
+app_state = AppState()
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # Start-up logic
-    producer = OrderProducer()
-    await producer.start()
+    app_state.producer = OrderProducer()
+    await app_state.producer.start()
     yield
     # Shutdown logic
-    await producer.stop()
+    if app_state.producer:
+        await app_state.producer.stop()
 
 
-app_state = AppState()
 app = FastAPI(title="Order Book Simulator - Gateway Service", lifespan=lifespan)
 
 
@@ -56,6 +59,10 @@ async def create_order(order_request: OrderRequest, db=Depends(get_db)):
         )
 
         order_record = await db.fetchrow(query, *values)
+        if app_state.producer is None:
+            raise HTTPException(
+                status_code=503, detail="Order processing service is unavailable."
+            )
         await app_state.producer.send_order(order_record)
 
         return OrderResponse(**order_record)
