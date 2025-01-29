@@ -1,0 +1,18 @@
+# Use an official PostgreSQL runtime as a parent image
+FROM postgres:17.2
+
+# Set environment variables for PostgreSQL configuration
+ENV POSTGRES_DB=orderbook_db
+ENV POSTGRES_USER=orderbook_user
+ENV POSTGRES_PASSWORD=orderbook_password
+
+# Copy SQL schema to docker-entrypoint-initdb.d to ensure it's run on first container startup
+COPY ../src/order_book_simulator/database/schema.sql /docker-entrypoint-initdb.d/01-init-schema.sql
+
+# Optional: Add any additional configuration files
+# COPY postgres.conf /etc/postgresql/postgresql.conf
+
+# Expose the default PostgreSQL port
+EXPOSE 5432
+
+# The default entrypoint/cmd will start PostgreSQL

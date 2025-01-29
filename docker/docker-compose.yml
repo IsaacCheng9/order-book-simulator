@@ -1,4 +1,17 @@
 services:
+  postgres:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.postgresql
+    environment:
+      - POSTGRES_DB=orderbook_db
+      - POSTGRES_USER=orderbook_user
+      - POSTGRES_PASSWORD=orderbook_password
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+
   kafka:
     image: confluentinc/cp-kafka:latest
     environment:
@@ -19,6 +32,8 @@ services:
       dockerfile: docker/Dockerfile.gateway
     depends_on:
       - kafka
+    environment:
+      - DATABASE_URL=postgresql://orderbook_user:orderbook_password@postgres:5432/orderbook_db
 
   matching:
     build:
@@ -33,3 +48,7 @@ services:
       dockerfile: docker/Dockerfile.market_data
     depends_on:
       - kafka
+
+volumes:
+  postgres_data:
+    driver: local
