@@ -5,7 +5,7 @@ import os
 # Use environment variables for configuration.
 DATABASE_URL = os.getenv(
     "DATABASE_URL",
-    "postgresql://orderbook_user:orderbook_password@postgres:5432/orderbook_db",
+    "postgresql+asyncpg://orderbook_user:orderbook_password@postgres:5432/orderbook_db",
 )
 
 # Create engine with connection pooling disabled for more predictable
