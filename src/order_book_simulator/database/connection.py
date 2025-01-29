@@ -1,5 +1,4 @@
-from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker
+from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
 from sqlalchemy.pool import NullPool
 import os
 
@@ -11,23 +10,25 @@ DATABASE_URL = os.getenv(
 
 # Create engine with connection pooling disabled for more predictable
 # connection management.
-engine = create_engine(
+engine = create_async_engine(
     DATABASE_URL,
     poolclass=NullPool,  # Disable connection pooling
     pool_pre_ping=True,  # Test connections before using them
 )
 
-# Create a sessionmaker for database interactions.
-SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+# Create an async session factory for database interactions.
+AsyncSessionLocal = async_sessionmaker(
+    bind=engine, class_=AsyncSession, expire_on_commit=False
+)
 
 
-def get_db():
+async def get_db():
     """
     Dependency that creates a new database session for each request.
     Yields the session and ensures it's closed after use.
     """
-    db = SessionLocal()
-    try:
-        yield db
-    finally:
-        db.close()
+    async with AsyncSessionLocal() as session:
+        try:
+            yield session
+        finally:
+            await session.close()
