@@ -1,24 +1,42 @@
-from aiokafka import AIOKafkaProducer
+import asyncio
 import json
+import logging
+from datetime import datetime
 from typing import Any
 from uuid import UUID
-from datetime import datetime
 
+from aiokafka import AIOKafkaProducer
 from fastapi import HTTPException
 
 
 class OrderProducer:
     """Handles asynchronous production of order messages to Kafka."""
 
-    def __init__(self):
+    def __init__(self, max_retries: int = 5, retry_delay: int = 5):
         self.producer = AIOKafkaProducer(
             bootstrap_servers="kafka:9092", value_serializer=self._serialise
         )
         self.topic = "orders"
+        self.max_retries = max_retries
+        self.retry_delay = retry_delay
 
     async def start(self):
-        """Initialises the Kafka producer."""
-        await self.producer.start()
+        """Initialises the Kafka producer with retry logic."""
+        for attempt in range(self.max_retries):
+            try:
+                await self.producer.start()
+                logging.info("Successfully connected to Kafka")
+                return
+            except Exception as exception:
+                if attempt == self.max_retries - 1:
+                    logging.error(
+                        f"Failed to connect to Kafka after {self.max_retries} attempts"
+                    )
+                    raise exception
+                logging.warning(
+                    f"Failed to connect to Kafka (attempt {attempt + 1}/{self.max_retries}). Retrying in {self.retry_delay} seconds..."
+                )
+                await asyncio.sleep(self.retry_delay)
 
     async def stop(self):
         """Cleans up the Kafka producer."""
