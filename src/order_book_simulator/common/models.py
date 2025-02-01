@@ -6,21 +6,21 @@ from pydantic import BaseModel
 
 
 class OrderType(str, Enum):
-    MARKET = "market"
-    LIMIT = "limit"
-    STOP = "stop"
+    MARKET = "MARKET"
+    LIMIT = "LIMIT"
+    STOP = "STOP"
 
 
 class OrderSide(str, Enum):
-    BUY = "buy"
-    SELL = "sell"
+    BUY = "BUY"
+    SELL = "SELL"
 
 
 class OrderStatus(str, Enum):
-    PENDING = "pending"
-    PARTIALLY_FILLED = "partially_filled"
-    FILLED = "filled"
-    CANCELLED = "cancelled"
+    PENDING = "PENDING"
+    PARTIALLY_FILLED = "PARTIALLY_FILLED"
+    FILLED = "FILLED"
+    CANCELLED = "CANCELLED"
 
 
 class OrderRequest(BaseModel):
