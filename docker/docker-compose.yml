@@ -25,14 +25,24 @@ services:
       KAFKA_CONTROLLER_LISTENER_NAMES: "CONTROLLER"
       KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
       CLUSTER_ID: "order-book-dev-cluster-01"
+    healthcheck:
+      test: nc -z localhost 9092 || exit 1
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    ports:
+      - "9092:9092"
+    volumes:
+      - kafka_data:/var/lib/kafka/data
 
   gateway:
     build:
       context: ..
       dockerfile: docker/Dockerfile.gateway
     depends_on:
-      - kafka
-      - postgres
+      kafka:
+        condition: service_healthy
     environment:
       - DATABASE_URL=postgresql+asyncpg://orderbook_user:orderbook_password@postgres:5432/orderbook_db
     ports:
@@ -53,5 +63,7 @@ services:
       - kafka
 
 volumes:
+  kafka_data:
+    driver: local
   postgres_data:
     driver: local
