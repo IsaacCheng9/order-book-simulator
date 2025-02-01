@@ -8,4 +8,4 @@ COPY src/ src/
 
 RUN pip install --no-cache-dir -e .
 
-CMD ["python", "-m", "src.order_book_simulator.gateway.app"]
+CMD ["uvicorn", "src.order_book_simulator.gateway.app:app", "--host", "0.0.0.0", "--port", "8000"]
