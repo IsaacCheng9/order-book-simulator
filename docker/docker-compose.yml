@@ -32,8 +32,11 @@ services:
       dockerfile: docker/Dockerfile.gateway
     depends_on:
       - kafka
+      - postgres
     environment:
-      - DATABASE_URL=postgresql://orderbook_user:orderbook_password@postgres:5432/orderbook_db
+      - DATABASE_URL=postgresql+asyncpg://orderbook_user:orderbook_password@postgres:5432/orderbook_db
+    ports:
+      - "8000:8000"
 
   matching:
     build:
