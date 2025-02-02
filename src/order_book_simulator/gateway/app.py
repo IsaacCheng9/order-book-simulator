@@ -1,11 +1,13 @@
 from contextlib import asynccontextmanager
 from datetime import datetime
-from fastapi import FastAPI, Depends, HTTPException
+from importlib.metadata import version
+
+from fastapi import Depends, FastAPI, HTTPException
 
 from order_book_simulator.common.models import OrderRequest, OrderResponse
 from order_book_simulator.database.connection import get_db
-from order_book_simulator.gateway.validation import validate_order
 from order_book_simulator.gateway.producer import OrderProducer
+from order_book_simulator.gateway.validation import validate_order
 
 
 class AppState:
@@ -27,7 +29,12 @@ async def lifespan(app: FastAPI):
         await app_state.producer.stop()
 
 
-app = FastAPI(title="Order Book Simulator - Gateway Service", lifespan=lifespan)
+package_version = version("order-book-simulator")
+app = FastAPI(
+    title="Order Book Simulator - Gateway Service",
+    version=package_version,
+    lifespan=lifespan,
+)
 
 
 @app.get("/health")
