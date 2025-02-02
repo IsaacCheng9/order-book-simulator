@@ -25,3 +25,14 @@ Run the following command from the [project root](./) directory:
 ```bash
 uv sync --all-extras --dev
 ```
+
+### Running the Simulator Locally
+
+Use Docker Compose to build and run the services locally:
+
+```bash
+docker compose -f docker/docker-compose.yml up --build
+```
+
+From there, you can interact with the FastAPI service at:
+[http://localhost:8000/docs](http://localhost:8000/docs)
