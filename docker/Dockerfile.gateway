@@ -6,6 +6,7 @@ COPY README.md .
 COPY pyproject.toml .
 COPY src/ src/
 
-RUN pip install --no-cache-dir -e .
+RUN apt-get update && apt-get install -y netcat-traditional && rm -rf /var/lib/apt/lists/*
+RUN pip install --no-cache-dir -e . uvicorn
 
-CMD ["python", "-m", "src.order_book_simulator.gateway.app"]
+CMD ["uvicorn", "src.order_book_simulator.gateway.app:app", "--host", "0.0.0.0", "--port", "8000"]
