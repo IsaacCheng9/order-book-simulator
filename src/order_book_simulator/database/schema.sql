@@ -3,9 +3,9 @@ CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 CREATE EXTENSION IF NOT EXISTS "pgcrypto";
 
 -- Enum for order types
-CREATE TYPE order_type AS ENUM ('market', 'limit', 'stop');
-CREATE TYPE order_side AS ENUM ('buy', 'sell');
-CREATE TYPE order_status AS ENUM ('pending', 'partially_filled', 'filled', 'cancelled');
+CREATE TYPE order_type AS ENUM ('MARKET', 'LIMIT', 'STOP');
+CREATE TYPE order_side AS ENUM ('BUY', 'SELL');
+CREATE TYPE order_status AS ENUM ('PENDING', 'PARTIALLY_FILLED', 'FILLED', 'CANCELLED');
 
 -- Instrument/Trading Pair table
 CREATE TABLE instrument (
@@ -27,7 +27,7 @@ CREATE TABLE order_ (
     instrument_id UUID NOT NULL,
     type order_type NOT NULL,
     side order_side NOT NULL,
-    status order_status NOT NULL DEFAULT 'pending',
+    status order_status NOT NULL DEFAULT 'PENDING',
     price NUMERIC(20, 8),
     quantity NUMERIC(20, 8) NOT NULL,
     filled_quantity NUMERIC(20, 8) DEFAULT 0,
