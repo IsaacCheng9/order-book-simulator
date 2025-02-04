@@ -1,9 +1,11 @@
 from unittest.mock import AsyncMock
+from uuid import uuid4
 
 import pytest
 from fastapi.testclient import TestClient
 
 from order_book_simulator.gateway.app import app
+from order_book_simulator.matching.order_book import OrderBook
 
 
 @pytest.fixture(autouse=True)
@@ -28,3 +30,9 @@ def test_client(mock_kafka_producer, monkeypatch):
 
     with TestClient(app) as client:
         yield client
+
+
+@pytest.fixture
+def order_book() -> OrderBook:
+    """Creates a fresh order book for testing."""
+    return OrderBook(instrument_id=uuid4())
