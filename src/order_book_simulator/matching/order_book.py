@@ -111,6 +111,53 @@ class OrderBook:
 
         return trades, remaining_quantity
 
+    def _insert_order_with_price_time_priority(
+        self,
+        order: OrderBookEntry,
+        orders: list[OrderBookEntry],
+        is_buy: bool,
+    ) -> None:
+        """
+        Inserts an order into the appropriate position, maintaining price-time
+        priority.
+
+        Args:
+            order: The order to insert.
+            orders: The list of orders to insert into.
+            is_buy: True if this is for the buy side.
+        """
+        insert_index = 0
+
+        # Find the correct position to insert the order.
+        for existing_order in orders:
+            if (
+                # Buy orders should prioritise higher prices, then earlier
+                # entry times.
+                is_buy
+                and (
+                    existing_order.price < order.price
+                    or (
+                        existing_order.price == order.price
+                        and existing_order.entry_time > order.entry_time
+                    )
+                )
+            ) or (
+                # Sell orders should prioritise lower prices, then earlier
+                # entry times.
+                not is_buy
+                and (
+                    existing_order.price > order.price
+                    or (
+                        existing_order.price == order.price
+                        and existing_order.entry_time > order.entry_time
+                    )
+                )
+            ):
+                break
+            insert_index += 1
+
+        orders.insert(insert_index, order)
+
     def add_order(self, order: dict[str, Any]) -> list[dict]:
         """
         Processes an incoming order, matching it against existing orders and
@@ -157,8 +204,8 @@ class OrderBook:
                     order_count=1,
                 )
 
-            # Add the order to the approrpiate list.
+            # Add the order to the approrpiate list with price-time priority.
             orders = self._bid_orders if is_buy else self._ask_orders
-            orders.append(entry)
+            self._insert_order_with_price_time_priority(entry, orders, is_buy)
 
         return trades
