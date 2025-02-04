@@ -2,7 +2,8 @@ from dataclasses import dataclass
 from decimal import Decimal
 from typing import Any
 from uuid import UUID
-from order_book_simulator.common.models import OrderType, OrderSide, OrderStatus
+
+from order_book_simulator.common.models import OrderSide, OrderType
 
 
 @dataclass
@@ -25,6 +26,7 @@ class OrderBookEntry:
     id: UUID
     price: Decimal
     quantity: Decimal
+    # The time the order was added to the book in microseconds.
     entry_time: int
 
 
@@ -40,19 +42,6 @@ class OrderBook:
         self.asks: dict[Decimal, AggregatedLevel] = {}
         self._bid_orders: list[OrderBookEntry] = []
         self._ask_orders: list[OrderBookEntry] = []
-
-    def add_order(self, order: dict[str, Any]) -> list[dict]:
-        """
-        Processes an incoming order, matching it against existing orders and
-        adding it to the book if it doesn't fully match.
-
-        Args:
-            order: The order to process.
-
-        Returns:
-            A list of trades that were executed.
-        """
-        pass
 
     def _match_orders(
         self,
@@ -73,9 +62,10 @@ class OrderBook:
         Returns:
             A tuple containing the list of trades and the remaining quantity.
         """
-        trades = []
+        trades: list[dict[str, Any]] = []
         remaining_quantity = Decimal(str(incoming_order["quantity"]))
-        price = Decimal(str(incoming_order["price"]))
+        # May not have a price if it's a market order.
+        price: Decimal | None = Decimal(str(incoming_order.get("price", None)))
 
         # Iterate on a copy of the list so we can edit the original list.
         for resting_order in resting_orders[:]:
@@ -120,3 +110,55 @@ class OrderBook:
                         del aggregated_levels[resting_order.price]
 
         return trades, remaining_quantity
+
+    def add_order(self, order: dict[str, Any]) -> list[dict]:
+        """
+        Processes an incoming order, matching it against existing orders and
+        adding it to the book if it doesn't fully match.
+
+        Args:
+            order: The order to process.
+
+        Returns:
+            A list of trades that were executed.
+        """
+        is_buy: bool = order["side"] == OrderSide.BUY
+        trades: list[dict[str, Any]] = []
+
+        # Match against the opposite side of the book if prices overlap.
+        opposing_orders = self._ask_orders if is_buy else self._bid_orders
+        opposing_aggregated_levels = self.asks if is_buy else self.bids
+        trades, remaining_quantity = self._match_orders(
+            order, opposing_orders, opposing_aggregated_levels, is_buy
+        )
+
+        # If it's a limit order and there's remaining quantity, add it to the
+        # book.
+        if order["type"] == OrderType.LIMIT and remaining_quantity > 0:
+            price = Decimal(str(order["price"]))
+            entry = OrderBookEntry(
+                id=order["id"],
+                price=price,
+                quantity=remaining_quantity,
+                # Convert the timestamp to microseconds.
+                entry_time=int(order["created_at"].timestamp() * 1_000_000),
+            )
+
+            # Update or create the price level.
+            aggregated_levels = self.bids if is_buy else self.asks
+            if price in aggregated_levels:
+                aggregated_level = aggregated_levels[price]
+                aggregated_level.quantity += remaining_quantity
+                aggregated_level.order_count += 1
+            else:
+                aggregated_levels[price] = AggregatedLevel(
+                    price=price,
+                    quantity=remaining_quantity,
+                    order_count=1,
+                )
+
+            # Add the order to the approrpiate list.
+            orders = self._bid_orders if is_buy else self._ask_orders
+            orders.append(entry)
+
+        return trades
