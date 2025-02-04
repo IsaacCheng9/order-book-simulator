@@ -2,6 +2,8 @@ from datetime import datetime, timezone
 from decimal import Decimal
 from uuid import uuid4
 
+import pytest
+
 from order_book_simulator.common.models import OrderSide, OrderType
 from order_book_simulator.matching.order_book import OrderBook
 
@@ -144,3 +146,22 @@ def test_multiple_trades_from_single_order(order_book: OrderBook) -> None:
     assert trades[1]["price"] == Decimal("101")
     # The book should be empty.
     assert not order_book.asks
+
+
+def test_market_order_with_price_raises_error(order_book: OrderBook) -> None:
+    """Tests that market orders with a price specified raise an error."""
+    sell_order = create_order(
+        price=Decimal("100"),
+        quantity=Decimal("10"),
+        side=OrderSide.SELL,
+    )
+    order_book.add_order(sell_order)
+    market_buy = create_order(
+        price=Decimal("100"),
+        quantity=Decimal("5"),
+        order_type=OrderType.MARKET,
+    )
+
+    # Prices shouldn't be provided for market orders.
+    with pytest.raises(ValueError, match="Market orders should not have a price"):
+        order_book.add_order(market_buy)
