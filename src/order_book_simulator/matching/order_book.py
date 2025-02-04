@@ -70,6 +70,12 @@ class OrderBook:
             if incoming_order.get("price") is not None
             else None
         )
+        # Market orders have no price as they match against the best available.
+        order_type = incoming_order["type"]
+        if order_type == OrderType.MARKET and price is not None:
+            raise ValueError("Market orders should not have a price.")
+        if order_type != OrderType.MARKET and price is None:
+            raise ValueError("Limit orders must have a price.")
 
         # Iterate on a copy of the list so we can edit the original list.
         for resting_order in resting_orders[:]:
@@ -81,9 +87,9 @@ class OrderBook:
             # equal to the lowest sell, or their sell order is less than or
             # equal to the highest buy.
             if (
-                incoming_order["type"] == OrderType.MARKET
-                or (is_buy and resting_order.price <= price)
-                or (not is_buy and resting_order.price >= price)
+                order_type == OrderType.MARKET
+                or (is_buy and price and resting_order.price <= price)
+                or (not is_buy and price and resting_order.price >= price)
             ):
                 match_quantity = min(remaining_quantity, resting_order.quantity)
                 remaining_quantity -= match_quantity
