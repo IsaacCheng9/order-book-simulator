@@ -65,7 +65,11 @@ class OrderBook:
         trades: list[dict[str, Any]] = []
         remaining_quantity = Decimal(str(incoming_order["quantity"]))
         # May not have a price if it's a market order.
-        price: Decimal | None = Decimal(str(incoming_order.get("price", None)))
+        price: Decimal | None = (
+            Decimal(str(incoming_order["price"]))
+            if incoming_order.get("price") is not None
+            else None
+        )
 
         # Iterate on a copy of the list so we can edit the original list.
         for resting_order in resting_orders[:]:
