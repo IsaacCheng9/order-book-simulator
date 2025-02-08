@@ -8,25 +8,44 @@ from order_book_simulator.common.models import OrderRequest, OrderResponse
 from order_book_simulator.database.connection import get_db
 from order_book_simulator.gateway.producer import OrderProducer
 from order_book_simulator.gateway.validation import validate_order
+from order_book_simulator.matching.consumer import OrderConsumer
+from order_book_simulator.matching.engine import MatchingEngine
 
 
 class AppState:
     def __init__(self):
         self.producer: OrderProducer | None = None
+        self.consumer: OrderConsumer | None = None
+        self.matching_engine: MatchingEngine | None = None
 
 
 app_state = AppState()
 
 
+async def publish_market_data(instrument_id, market_data):
+    """Publishes market data updates (placeholder for now)."""
+    # TODO: Implement market data publishing
+    print(f"Market data update for {instrument_id}: {market_data}")
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # Start-up logic
+    app_state.matching_engine = MatchingEngine(publish_market_data)
+    app_state.consumer = OrderConsumer(app_state.matching_engine)
     app_state.producer = OrderProducer()
+
+    # Start both Kafka producer and consumer
     await app_state.producer.start()
+    await app_state.consumer.start()
+
     yield
+
     # Shutdown logic
     if app_state.producer:
         await app_state.producer.stop()
+    if app_state.consumer:
+        await app_state.consumer.stop()
 
 
 package_version = version("order-book-simulator")
