@@ -21,8 +21,8 @@ class OrderProducer:
         topic: str = "orders",
         max_retries: int = 5,
         retry_delay: int = 5,
-        batch_size: int = 16384,
-        linger_ms: int = 100,
+        max_batch_size: int = 8192,
+        linger_ms: int = 0,
     ):
         """
         Creates a new order producer.
@@ -32,7 +32,7 @@ class OrderProducer:
             topic: Kafka topic to produce to.
             max_retries: Maximum number of connection attempts.
             retry_delay: Delay between connection attempts in seconds.
-            batch_size: Maximum size of buffered records in bytes.
+            max_batch_size: Maximum size of buffered records in bytes.
             linger_ms: Time to wait for more records before sending a batch.
         """
         self.producer: AIOKafkaProducer | None = None
@@ -40,7 +40,7 @@ class OrderProducer:
         self.topic = topic
         self.max_retries = max_retries
         self.retry_delay = retry_delay
-        self.batch_size = batch_size
+        self.max_batch_size = max_batch_size
         self.linger_ms = linger_ms
 
     async def start(self) -> None:
@@ -53,6 +53,8 @@ class OrderProducer:
         self.producer = AIOKafkaProducer(
             bootstrap_servers=self.bootstrap_servers,
             linger_ms=self.linger_ms,
+            max_batch_size=self.max_batch_size,
+            compression_type=None,
             acks="all",
             enable_idempotence=True,
         )
