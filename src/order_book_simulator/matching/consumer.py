@@ -61,7 +61,14 @@ class OrderConsumer:
             # Skip health check messages
             if order_data.get("type") == "health_check":
                 return
+
+            logger.info(
+                f"Processing order: id={order_data['id']}, "
+                f"type={order_data['type']}, side={order_data['side']}, "
+                f"price={order_data['price']}, quantity={order_data['quantity']}"
+            )
             await self.matching_engine.process_order(order_data)
+            logger.info(f"Successfully processed order {order_data['id']}")
         except Exception as e:
             logger.error(f"Error processing message: {e}")
 
