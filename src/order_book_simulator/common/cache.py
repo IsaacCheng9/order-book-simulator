@@ -5,8 +5,6 @@ from uuid import UUID
 import redis
 from redis import Redis
 
-from order_book_simulator.matching.order_book import OrderBook
-
 
 class OrderBookCache:
     """Manages order book data in Redis."""
