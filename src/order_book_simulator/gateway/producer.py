@@ -142,3 +142,22 @@ class OrderProducer:
                 status_code=500,
                 detail=f"Failed to publish order to matching engine: {e}",
             )
+
+    async def check_health(self) -> bool:
+        """
+        Checks if the producer is healthy by attempting to send a test message.
+
+        Returns:
+            bool: True if producer is healthy, False otherwise.
+        """
+        if not self.producer:
+            return False
+
+        try:
+            await self.producer.send_and_wait(
+                self.topic, value={"type": "health_check"}, partition=0
+            )
+            return True
+        except Exception as e:
+            logger.error(f"Kafka health check failed: {e}")
+            return False

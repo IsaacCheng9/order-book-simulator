@@ -25,12 +25,14 @@ services:
       KAFKA_CONTROLLER_LISTENER_NAMES: "CONTROLLER"
       KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
       CLUSTER_ID: "order-book-dev-cluster-01"
+      KAFKA_GROUP_MIN_SESSION_TIMEOUT_MS: 6000
+      KAFKA_GROUP_MAX_SESSION_TIMEOUT_MS: 60000
     healthcheck:
       test: nc -z localhost 9092 || exit 1
-      interval: 10s
-      timeout: 5s
+      interval: 5s
+      timeout: 10s
       retries: 5
-      start_period: 30s
+      start_period: 15s
     ports:
       - "9092:9092"
     volumes:

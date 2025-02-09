@@ -1,6 +1,7 @@
-import json
 import asyncio
+import json
 import logging
+from uuid import UUID
 
 from aiokafka import AIOKafkaConsumer, ConsumerRecord
 
@@ -20,6 +21,8 @@ class OrderConsumer:
         group_id: str = "matching-engine",
         max_retries: int = 5,
         retry_delay: int = 5,
+        session_timeout_ms: int = 45000,
+        heartbeat_interval_ms: int = 3000,
     ):
         """
         Creates a new order consumer.
@@ -31,6 +34,8 @@ class OrderConsumer:
             group_id: Consumer group ID.
             max_retries: Maximum number of connection attempts.
             retry_delay: Delay between connection attempts in seconds.
+            session_timeout_ms: Kafka session timeout in milliseconds.
+            heartbeat_interval_ms: Kafka heartbeat interval in milliseconds.
         """
         self.consumer: AIOKafkaConsumer | None = None
         self.matching_engine = matching_engine
@@ -39,6 +44,8 @@ class OrderConsumer:
         self.group_id = group_id
         self.max_retries = max_retries
         self.retry_delay = retry_delay
+        self.session_timeout_ms = session_timeout_ms
+        self.heartbeat_interval_ms = heartbeat_interval_ms
 
     async def _process_message(self, message: ConsumerRecord) -> None:
         """
@@ -51,6 +58,9 @@ class OrderConsumer:
             if message.value is None:
                 return
             order_data = json.loads(message.value.decode("utf-8"))
+            # Skip health check messages
+            if order_data.get("type") == "health_check":
+                return
             await self.matching_engine.process_order(order_data)
         except Exception as e:
             logger.error(f"Error processing message: {e}")
@@ -61,6 +71,8 @@ class OrderConsumer:
             self.topic,
             bootstrap_servers=self.bootstrap_servers,
             group_id=self.group_id,
+            session_timeout_ms=self.session_timeout_ms,
+            heartbeat_interval_ms=self.heartbeat_interval_ms,
         )
 
         for attempt in range(self.max_retries):
@@ -98,3 +110,33 @@ class OrderConsumer:
         if self.consumer:
             await self.consumer.stop()
             self.consumer = None
+
+
+async def main():
+    """Main entry point for the matching engine consumer."""
+
+    # TODO: Use this placeholder market data publisher for now.
+    async def publish_market_data(instrument_id: UUID, trade_data: dict) -> None:
+        logger.info(f"Trade executed for {instrument_id}: {trade_data}")
+
+    matching_engine = MatchingEngine(market_data_publisher=publish_market_data)
+    consumer = OrderConsumer(
+        matching_engine=matching_engine,
+        session_timeout_ms=45000,
+        heartbeat_interval_ms=3000,
+    )
+
+    try:
+        await consumer.start()
+        # Keep the consumer running until the user interrupts the program.
+        while True:
+            await asyncio.sleep(1)
+    except KeyboardInterrupt:
+        logger.info("Shutting down consumer...")
+    finally:
+        await consumer.stop()
+
+
+if __name__ == "__main__":
+    logging.basicConfig(level=logging.INFO)
+    asyncio.run(main())

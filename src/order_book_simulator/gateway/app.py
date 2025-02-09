@@ -1,3 +1,4 @@
+import logging
 from contextlib import asynccontextmanager
 from datetime import datetime
 from importlib.metadata import version
@@ -10,6 +11,8 @@ from order_book_simulator.gateway.producer import OrderProducer
 from order_book_simulator.gateway.validation import validate_order
 from order_book_simulator.matching.consumer import OrderConsumer
 from order_book_simulator.matching.engine import MatchingEngine
+
+logger = logging.getLogger(__name__)
 
 
 class AppState:
@@ -31,21 +34,22 @@ async def publish_market_data(instrument_id, market_data):
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # Start-up logic
-    app_state.matching_engine = MatchingEngine(publish_market_data)
-    app_state.consumer = OrderConsumer(app_state.matching_engine)
-    app_state.producer = OrderProducer()
-
-    # Start both Kafka producer and consumer
-    await app_state.producer.start()
-    await app_state.consumer.start()
-
-    yield
-
-    # Shutdown logic
-    if app_state.producer:
-        await app_state.producer.stop()
-    if app_state.consumer:
-        await app_state.consumer.stop()
+    try:
+        app_state.matching_engine = MatchingEngine(publish_market_data)
+        app_state.producer = OrderProducer()
+        # Only start the producer, as we don't need the consumer in the
+        # gateway.
+        await app_state.producer.start()
+        logger.info("Producer started successfully")
+        yield
+    except Exception as e:
+        logger.error(f"Error during startup: {e}")
+        raise
+    finally:
+        # Shut down the producer once we're done.
+        if app_state.producer:
+            await app_state.producer.stop()
+            logger.info("Producer stopped")
 
 
 package_version = version("order-book-simulator")
@@ -59,6 +63,27 @@ app = FastAPI(
 @app.get("/health")
 async def health_check():
     return {"status": "healthy", "timestamp": datetime.now(), "service": "gateway"}
+
+
+@app.get("/health/kafka")
+async def kafka_health() -> dict[str, str]:
+    """Checks the Kafka producer's connectivity status."""
+    status = {
+        "kafka_producer": "unhealthy",
+        "timestamp": datetime.now().isoformat(),
+    }
+
+    if not app_state.producer:
+        status["error"] = "Kafka producer not initialised"
+        raise HTTPException(status_code=503, detail=status)
+
+    is_healthy = await app_state.producer.check_health()
+    if is_healthy:
+        status["kafka_producer"] = "healthy"
+        return status
+
+    status["error"] = "Failed to send health check message to Kafka"
+    raise HTTPException(status_code=503, detail=status)
 
 
 @app.post("/orders", response_model=OrderResponse)
