@@ -99,3 +99,45 @@ def test_get_all_order_books_with_orders(test_client, matching_engine, event_loo
         assert "asks" in book
         assert len(book["bids"]) == 1  # Should have our buy order
         assert len(book["asks"]) == 0  # No sell orders
+
+
+def test_get_active_instruments_empty(test_client):
+    """Tests getting active instruments when no order books exist."""
+    response = test_client.get("/instruments")
+    assert response.status_code == 200
+    data = response.json()
+    assert "timestamp" in data
+    assert "instrument_ids" in data
+    assert len(data["instrument_ids"]) == 0
+
+
+def test_get_active_instruments_with_orders(test_client, matching_engine, event_loop):
+    """Tests getting active instruments with existing order books."""
+    # Create orders for two different instruments (in reverse order)
+    instrument_ids = sorted([uuid4(), uuid4()], reverse=True)
+    for instrument_id in instrument_ids:
+        order = {
+            "id": str(uuid4()),
+            "instrument_id": str(instrument_id),
+            "price": "100.00",
+            "quantity": "10.00",
+            "side": OrderSide.BUY.value,
+            "type": OrderType.LIMIT.value,
+            "created_at": datetime.now(timezone.utc),
+        }
+        event_loop.run_until_complete(matching_engine.process_order(order))
+
+    # Get active instruments.
+    response = test_client.get("/instruments")
+    assert response.status_code == 200
+
+    # Ensure that our orders for the instruments have been processed and can
+    # be retrieved.
+    data = response.json()
+    assert "timestamp" in data
+    assert "instrument_ids" in data
+    assert len(data["instrument_ids"]) == 2
+
+    # Verify instrument IDs are returned in sorted order.
+    received_ids = data["instrument_ids"]
+    assert received_ids == sorted(received_ids)

@@ -151,3 +151,21 @@ async def get_all_order_books() -> dict[str, Any]:
         "timestamp": datetime.now(timezone.utc).isoformat(),
         "order_books": order_book_cache.get_all_order_books(),
     }
+
+
+@app.get("/instruments")
+async def get_active_instruments() -> dict[str, Any]:
+    """
+    Returns a list of all instrument IDs that have an active order book.
+
+    Returns:
+        A dictionary containing the list of active instrument IDs and
+        timestamp.
+    """
+    order_books = order_book_cache.get_all_order_books()
+    return {
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+        # Store the instrument IDs in ascending order so that the return is
+        # consistent.
+        "instrument_ids": sorted(order_books.keys()),
+    }
