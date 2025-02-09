@@ -4,10 +4,10 @@ from uuid import UUID, uuid4
 import pytest
 from starlette.testclient import TestClient
 
+from order_book_simulator.common.cache import order_book_cache
 from order_book_simulator.gateway.app import app, app_state
 from order_book_simulator.matching.engine import MatchingEngine
 from order_book_simulator.matching.order_book import OrderBook
-from order_book_simulator.matching.service import matching_service
 
 
 class MockMarketDataPublisher:
@@ -34,21 +34,11 @@ def market_data_publisher():
     return MockMarketDataPublisher()
 
 
-@pytest.fixture(autouse=True)
-def reset_matching_service():
-    """Resets the matching service state before each test."""
-    matching_service.engine = None
-    yield
-    matching_service.engine = None
-
-
 @pytest.fixture
-def matching_engine(market_data_publisher, reset_matching_service) -> MatchingEngine:
+def matching_engine(market_data_publisher) -> MatchingEngine:
     """Creates a matching engine instance for testing."""
     engine = MatchingEngine(market_data_publisher)
-    # Set the engine in both app_state and matching_service for API tests.
     app_state.matching_engine = engine
-    matching_service.engine = engine
     return engine
 
 
@@ -72,3 +62,27 @@ def test_client(mock_kafka_producer, monkeypatch):
 def order_book() -> OrderBook:
     """Creates a fresh order book for testing."""
     return OrderBook(instrument_id=uuid4())
+
+
+@pytest.fixture(autouse=True)
+def mock_redis(monkeypatch):
+    """Creates a mock Redis instance for testing."""
+    mock_data = {}
+
+    class MockRedis:
+        def set(self, key: str, value: str) -> None:
+            mock_data[key] = value
+
+        def get(self, key: str) -> str | None:
+            return mock_data.get(key)
+
+        def keys(self, pattern: str) -> list[str]:
+            if pattern.endswith("*"):
+                prefix = pattern[:-1]
+                return [k for k in mock_data.keys() if k.startswith(prefix)]
+            return [k for k in mock_data.keys() if k == pattern]
+
+    # Replace the Redis instance in the cache module directly
+    order_book_cache.redis = MockRedis()  # type: ignore
+    yield
+    mock_data.clear()

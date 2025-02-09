@@ -7,7 +7,6 @@ from uuid import UUID
 from aiokafka import AIOKafkaConsumer, ConsumerRecord
 
 from order_book_simulator.matching.engine import MatchingEngine
-from order_book_simulator.matching.service import matching_service
 
 logger = logging.getLogger(__name__)
 
@@ -147,7 +146,6 @@ async def main():
         logger.info(f"Trade executed for {instrument_id}: {trade_data}")
 
     matching_engine = MatchingEngine(market_data_publisher=publish_market_data)
-    matching_service.engine = matching_engine  # Set the engine in the service
     consumer = OrderConsumer(
         matching_engine=matching_engine,
         session_timeout_ms=10000,
