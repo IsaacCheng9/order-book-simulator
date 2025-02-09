@@ -219,3 +219,30 @@ class OrderBook:
             self._insert_order_with_price_time_priority(entry, orders, is_buy)
 
         return trades
+
+    def get_full_snapshot(self) -> dict:
+        """
+        Returns a snapshot of the current full order book state.
+
+        Returns:
+            A dictionary containing the current state of the order book.
+        """
+        return {
+            "bids": [
+                {"price": str(price), "quantity": str(level.quantity)}
+                # Sort bids form high to low.
+                for price, level in sorted(
+                    self.bids.items(),
+                    key=lambda x: x[0],
+                    reverse=True,
+                )
+            ],
+            "asks": [
+                {"price": str(price), "quantity": str(level.quantity)}
+                # Sort asks from low to high.
+                for price, level in sorted(
+                    self.asks.items(),
+                    key=lambda x: x[0],
+                )
+            ],
+        }
