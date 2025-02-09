@@ -32,6 +32,9 @@ services:
       KAFKA_COMPRESSION_TYPE: "producer"
       KAFKA_LINGER_MS: 0
       KAFKA_BATCH_SIZE: 8192
+      KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
+      KAFKA_AUTO_LEADER_REBALANCE_ENABLE: "true"
+      KAFKA_UNCLEAN_LEADER_ELECTION_ENABLE: "false"
     healthcheck:
       test: nc -z localhost 9092 || exit 1
       interval: 5s

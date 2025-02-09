@@ -1,6 +1,6 @@
 import logging
 from contextlib import asynccontextmanager
-from datetime import datetime
+from datetime import datetime, timezone
 from decimal import Decimal
 from importlib.metadata import version
 from uuid import uuid4
@@ -90,6 +90,7 @@ async def kafka_health() -> dict[str, str]:
 
 @app.post("/orders", response_model=OrderResponse)
 async def create_order(order_request: OrderRequest, db=Depends(get_db)):
+    start_time = datetime.now(timezone.utc)
     if app_state.producer is None:
         raise HTTPException(
             status_code=503, detail="Order processing service is unavailable"
@@ -104,9 +105,13 @@ async def create_order(order_request: OrderRequest, db=Depends(get_db)):
             "status": OrderStatus.PENDING,
             "filled_quantity": Decimal("0"),
             "total_fee": Decimal("0"),
+            "gateway_received_at": start_time.isoformat(),
         }
 
         await app_state.producer.send_order(order_record)
+        logger.info(
+            f"Order gateway processing time: {(datetime.now(timezone.utc) - start_time).total_seconds() * 1000:.2f}ms"
+        )
         return OrderResponse(
-            **order_record, created_at=datetime.now(), updated_at=datetime.now()
+            **order_record, created_at=start_time, updated_at=start_time
         )

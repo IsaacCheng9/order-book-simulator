@@ -100,6 +100,7 @@ class OrderProducer:
             "side": order_record["side"].value,
             "price": str(order_record["price"]) if order_record["price"] else None,
             "quantity": str(order_record["quantity"]),
+            "gateway_received_at": order_record["gateway_received_at"],
         }
 
         logger.info(

@@ -2,6 +2,7 @@ import asyncio
 import json
 import logging
 from uuid import UUID
+from datetime import datetime, timezone
 
 from aiokafka import AIOKafkaConsumer, ConsumerRecord
 
@@ -21,8 +22,8 @@ class OrderConsumer:
         group_id: str = "matching-engine",
         max_retries: int = 5,
         retry_delay: int = 5,
-        session_timeout_ms: int = 45000,
-        heartbeat_interval_ms: int = 3000,
+        session_timeout_ms: int = 10000,
+        heartbeat_interval_ms: int = 1000,
     ):
         """
         Creates a new order consumer.
@@ -62,13 +63,31 @@ class OrderConsumer:
             if order_data.get("type") == "health_check":
                 return
 
+            gateway_time = datetime.fromisoformat(order_data["gateway_received_at"])
+            kafka_latency = (
+                datetime.now(timezone.utc) - gateway_time
+            ).total_seconds() * 1000
+
             logger.info(
                 f"Processing order: id={order_data['id']}, "
-                f"type={order_data['type']}, side={order_data['side']}, "
-                f"price={order_data['price']}, quantity={order_data['quantity']}"
+                f"kafka_latency={kafka_latency:.2f}ms"
             )
+
+            start_process = datetime.now(timezone.utc)
             await self.matching_engine.process_order(order_data)
-            logger.info(f"Successfully processed order {order_data['id']}")
+            process_time = (
+                datetime.now(timezone.utc) - start_process
+            ).total_seconds() * 1000
+
+            total_latency = (
+                datetime.now(timezone.utc) - gateway_time
+            ).total_seconds() * 1000
+
+            logger.info(
+                f"Order processed: id={order_data['id']}, "
+                f"matching_time={process_time:.2f}ms, "
+                f"total_latency={total_latency:.2f}ms"
+            )
         except Exception as e:
             logger.error(f"Error processing message: {e}")
 
@@ -129,8 +148,8 @@ async def main():
     matching_engine = MatchingEngine(market_data_publisher=publish_market_data)
     consumer = OrderConsumer(
         matching_engine=matching_engine,
-        session_timeout_ms=45000,
-        heartbeat_interval_ms=3000,
+        session_timeout_ms=10000,
+        heartbeat_interval_ms=1000,
     )
 
     try:
