@@ -4,6 +4,7 @@ import logging
 from datetime import datetime
 from typing import Any
 from uuid import UUID
+from decimal import Decimal
 
 from aiokafka import AIOKafkaProducer
 from fastapi import HTTPException
@@ -51,10 +52,9 @@ class OrderProducer:
         """
         self.producer = AIOKafkaProducer(
             bootstrap_servers=self.bootstrap_servers,
-            value_serializer=self._serialise,
             linger_ms=self.linger_ms,
-            acks="all",  # Ensure durability.
-            enable_idempotence=True,  # Prevent duplicate messages.
+            acks="all",
+            enable_idempotence=True,
         )
 
         for attempt in range(self.max_retries):
@@ -85,57 +85,36 @@ class OrderProducer:
             self.producer = None
             logger.info("Kafka producer stopped")
 
-    @staticmethod
-    def _serialise(data: dict[str, Any]) -> bytes:
-        """
-        Serialises order data for Kafka transmission.
-
-        Args:
-            data: Dictionary containing order data.
-
-        Returns:
-            JSON-encoded bytes of the order data.
-
-        Raises:
-            TypeError: If an unserialisable type is encountered.
-        """
-
-        def default(obj: Any) -> str:
-            if isinstance(obj, UUID):
-                return str(obj)
-            if isinstance(obj, datetime):
-                return obj.isoformat()
-            raise TypeError(f"Type {type(obj)} not serialisable")
-
-        return json.dumps(data, default=default).encode("utf-8")
-
     async def send_order(self, order_record: dict[str, Any]) -> None:
-        """
-        Publishes an order to Kafka for processing by the matching engine.
-
-        Args:
-            order_record: The order data to be published.
-
-        Raises:
-            HTTPException: If publishing fails or producer is not initialized.
-        """
+        """Publishes an order to Kafka for processing by the matching engine."""
         if not self.producer:
-            logger.error("Attempted to send order with uninitialised producer")
             raise HTTPException(
                 status_code=503,
                 detail="Order processing service is unavailable",
             )
 
+        # Convert types before serialising.
+        kafka_record = {
+            "id": str(order_record["id"]),
+            "instrument_id": str(order_record["instrument_id"]),
+            "type": order_record["type"].value,
+            "side": order_record["side"].value,
+            "price": str(order_record["price"]) if order_record["price"] else None,
+            "quantity": str(order_record["quantity"]),
+        }
+
+        logger.info(
+            f"Publishing order: id={kafka_record['id']}, "
+            f"type={kafka_record['type']}, side={kafka_record['side']}, "
+            f"price={kafka_record['price']}, quantity={kafka_record['quantity']}"
+        )
+
         try:
             await self.producer.send_and_wait(
                 self.topic,
-                order_record,
-                partition=hash(str(order_record.get("instrument_id"))) % 3,
+                json.dumps(kafka_record).encode("utf-8"),
             )
-            logger.info(
-                f"Order {order_record.get('id', 'unknown')} successfully published to "
-                "Kafka"
-            )
+            logger.info(f"Order {kafka_record['id']} successfully published to Kafka")
         except Exception as e:
             logger.error(f"Failed to publish order to Kafka: {e}")
             raise HTTPException(
@@ -155,7 +134,9 @@ class OrderProducer:
 
         try:
             await self.producer.send_and_wait(
-                self.topic, value={"type": "health_check"}, partition=0
+                self.topic,
+                json.dumps({"type": "health_check"}).encode("utf-8"),
+                partition=0,
             )
             return True
         except Exception as e:

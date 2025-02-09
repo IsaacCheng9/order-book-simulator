@@ -1,11 +1,13 @@
 import logging
 from contextlib import asynccontextmanager
 from datetime import datetime
+from decimal import Decimal
 from importlib.metadata import version
+from uuid import uuid4
 
 from fastapi import Depends, FastAPI, HTTPException
 
-from order_book_simulator.common.models import OrderRequest, OrderResponse
+from order_book_simulator.common.models import OrderRequest, OrderResponse, OrderStatus
 from order_book_simulator.database.connection import get_db
 from order_book_simulator.gateway.producer import OrderProducer
 from order_book_simulator.gateway.validation import validate_order
@@ -88,32 +90,23 @@ async def kafka_health() -> dict[str, str]:
 
 @app.post("/orders", response_model=OrderResponse)
 async def create_order(order_request: OrderRequest, db=Depends(get_db)):
-    await validate_order(order_request, db)
-
-    async with db.transaction():
-        query = """
-        INSERT INTO order_ (
-            user_id, instrument_id, type, side, price,
-            quantity, time_in_force, client_order_id
-        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-        RETURNING *
-        """
-        values = (
-            order_request.user_id,
-            order_request.instrument_id,
-            order_request.type.value,
-            order_request.side.value,
-            order_request.price,
-            order_request.quantity,
-            order_request.time_in_force,
-            order_request.client_order_id,
+    if app_state.producer is None:
+        raise HTTPException(
+            status_code=503, detail="Order processing service is unavailable"
         )
 
-        order_record = await db.fetchrow(query, *values)
-        if app_state.producer is None:
-            raise HTTPException(
-                status_code=503, detail="Order processing service is unavailable."
-            )
-        await app_state.producer.send_order(order_record)
+    async with db.begin():
+        await validate_order(order_request, db)
 
-        return OrderResponse(**order_record)
+        order_record = {
+            "id": uuid4(),
+            **order_request.model_dump(),
+            "status": OrderStatus.PENDING,
+            "filled_quantity": Decimal("0"),
+            "total_fee": Decimal("0"),
+        }
+
+        await app_state.producer.send_order(order_record)
+        return OrderResponse(
+            **order_record, created_at=datetime.now(), updated_at=datetime.now()
+        )
