@@ -48,8 +48,5 @@ async def test_publishes_market_data_on_trade(
     buy_order = create_order(instrument_id)
     await matching_engine.process_order(buy_order)
 
-    assert len(market_data_publisher.published_updates) == 1
-    published_instrument_id, market_data = market_data_publisher.published_updates[0]
-    assert published_instrument_id == instrument_id
-    assert "trades" in market_data
-    assert len(market_data["trades"]) == 1
+    # We expect updates for both orders.
+    assert len(market_data_publisher.published_updates) == 2

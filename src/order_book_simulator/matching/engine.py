@@ -2,6 +2,7 @@ from datetime import datetime, timezone
 from typing import Any, Awaitable, Callable
 from uuid import UUID
 
+from order_book_simulator.common.cache import order_book_cache
 from order_book_simulator.matching.order_book import OrderBook
 
 
@@ -44,6 +45,8 @@ class MatchingEngine:
             "trades": trades,
         }
         await self.market_data_publisher(instrument_id, market_data)
+        # Update Redis cache with latest snapshot
+        order_book_cache.set_order_book(instrument_id, market_data)
 
     async def process_order(self, order_message: dict[str, Any]) -> None:
         """
@@ -61,6 +64,5 @@ class MatchingEngine:
         # Add timestamp of when the order was processed.
         order_message["created_at"] = datetime.now(timezone.utc)
         trades = order_book.add_order(order_message)
-        if trades:
-            # Publish market data updates that the trades triggered.
-            await self._publish_market_data(instrument_id, order_book, trades)
+        # Always publish market data updates, even if no trades occurred.
+        await self._publish_market_data(instrument_id, order_book, trades or [])

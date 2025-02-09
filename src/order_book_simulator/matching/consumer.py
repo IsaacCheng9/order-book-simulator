@@ -1,8 +1,8 @@
 import asyncio
 import json
 import logging
-from uuid import UUID
 from datetime import datetime, timezone
+from uuid import UUID
 
 from aiokafka import AIOKafkaConsumer, ConsumerRecord
 
