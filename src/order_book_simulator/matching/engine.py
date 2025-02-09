@@ -1,3 +1,4 @@
+from datetime import datetime, timezone
 from typing import Any, Awaitable, Callable
 from uuid import UUID
 
@@ -51,12 +52,14 @@ class MatchingEngine:
         Args:
             order_message: The deserialised order message from Kafka.
         """
-        instrument_id: UUID = order_message["instrument_id"]
+        instrument_id = UUID(order_message["instrument_id"])
         order_book = self.order_books.get(instrument_id)
         if not order_book:
             order_book = OrderBook(instrument_id)
             self.order_books[instrument_id] = order_book
 
+        # Add timestamp of when the order was processed.
+        order_message["created_at"] = datetime.now(timezone.utc)
         trades = order_book.add_order(order_message)
         if trades:
             # Publish market data updates that the trades triggered.

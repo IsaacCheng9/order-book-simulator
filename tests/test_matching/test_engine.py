@@ -13,8 +13,8 @@ from tests.conftest import MockMarketDataPublisher
 def create_order(instrument_id: UUID) -> dict[str, Any]:
     """Creates a test order with the specified instrument ID."""
     return {
-        "id": uuid4(),
-        "instrument_id": instrument_id,
+        "id": str(uuid4()),
+        "instrument_id": str(instrument_id),
         "price": Decimal("100"),
         "quantity": Decimal("10"),
         "side": OrderSide.BUY,
