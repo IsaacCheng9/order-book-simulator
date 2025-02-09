@@ -3,7 +3,8 @@ from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 from decimal import Decimal
 from importlib.metadata import version
-from uuid import uuid4
+from typing import Any
+from uuid import UUID, uuid4
 
 from fastapi import Depends, FastAPI, HTTPException
 
@@ -115,3 +116,35 @@ async def create_order(order_request: OrderRequest, db=Depends(get_db)):
         return OrderResponse(
             **order_record, created_at=start_time, updated_at=start_time
         )
+
+
+@app.get("/order-book/{instrument_id}")
+async def get_order_book(instrument_id: UUID) -> dict[str, Any]:
+    """
+    Returns the current state of the order book for the specified instrument.
+
+    Args:
+        instrument_id: The unique identifier for the instrument.
+
+    Returns:
+        A dictionary containing the current state of the order book for the
+        specified instrument.
+    """
+    matching_engine = app_state.matching_engine
+    if not matching_engine:
+        raise HTTPException(
+            status_code=503, detail="Matching engine service is unavailable"
+        )
+
+    order_book = matching_engine.order_books.get(instrument_id)
+    if not order_book:
+        raise HTTPException(
+            status_code=404,
+            detail=f"No order book found for instrument {instrument_id}",
+        )
+
+    return {
+        "instrument_id": str(instrument_id),
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "book": order_book.get_full_snapshot(),
+    }
