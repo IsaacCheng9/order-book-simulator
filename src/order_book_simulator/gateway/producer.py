@@ -1,10 +1,7 @@
 import asyncio
 import json
 import logging
-from datetime import datetime
 from typing import Any
-from uuid import UUID
-from decimal import Decimal
 
 from aiokafka import AIOKafkaProducer
 from fastapi import HTTPException
