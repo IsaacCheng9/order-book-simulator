@@ -14,6 +14,7 @@ from order_book_simulator.gateway.producer import OrderProducer
 from order_book_simulator.gateway.validation import validate_order
 from order_book_simulator.matching.consumer import OrderConsumer
 from order_book_simulator.matching.engine import MatchingEngine
+from order_book_simulator.matching.service import matching_service
 
 logger = logging.getLogger(__name__)
 
@@ -38,7 +39,6 @@ async def publish_market_data(instrument_id, market_data):
 async def lifespan(app: FastAPI):
     # Start-up logic
     try:
-        app_state.matching_engine = MatchingEngine(publish_market_data)
         app_state.producer = OrderProducer()
         # Only start the producer, as we don't need the consumer in the
         # gateway.
@@ -147,4 +147,18 @@ async def get_order_book(instrument_id: UUID) -> dict[str, Any]:
         "instrument_id": str(instrument_id),
         "timestamp": datetime.now(timezone.utc).isoformat(),
         "book": order_book.get_full_snapshot(),
+    }
+
+
+@app.get("/order-books")
+async def get_all_order_books() -> dict[str, Any]:
+    """Returns the current state of all order books."""
+    if not matching_service.engine:
+        raise HTTPException(
+            status_code=503, detail="Matching engine service is unavailable"
+        )
+
+    return {
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "order_books": matching_service.get_all_order_books(),
     }

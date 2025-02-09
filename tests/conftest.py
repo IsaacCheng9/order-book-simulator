@@ -7,6 +7,7 @@ from starlette.testclient import TestClient
 from order_book_simulator.gateway.app import app, app_state
 from order_book_simulator.matching.engine import MatchingEngine
 from order_book_simulator.matching.order_book import OrderBook
+from order_book_simulator.matching.service import matching_service
 
 
 class MockMarketDataPublisher:
@@ -33,11 +34,21 @@ def market_data_publisher():
     return MockMarketDataPublisher()
 
 
+@pytest.fixture(autouse=True)
+def reset_matching_service():
+    """Resets the matching service state before each test."""
+    matching_service.engine = None
+    yield
+    matching_service.engine = None
+
+
 @pytest.fixture
-def matching_engine(market_data_publisher) -> MatchingEngine:
+def matching_engine(market_data_publisher, reset_matching_service) -> MatchingEngine:
     """Creates a matching engine instance for testing."""
     engine = MatchingEngine(market_data_publisher)
-    app_state.matching_engine = engine  # Set in app state for API tests
+    # Set the engine in both app_state and matching_service for API tests.
+    app_state.matching_engine = engine
+    matching_service.engine = engine
     return engine
 
 
