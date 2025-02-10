@@ -1,5 +1,6 @@
 from datetime import datetime, timezone
 from typing import Any
+from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -55,7 +56,8 @@ async def get_active_stocks(db: AsyncSession = Depends(get_db)) -> dict[str, Any
     """Returns a list of all stock tickers that have an active order book."""
     order_books = order_book_cache.get_all_order_books()
     # Convert UUIDs to tickers
-    tickers = await get_tickers_by_ids(list(order_books.keys()), db)
+    stock_ids = [UUID(id_) for id_ in order_books.keys()]
+    tickers = await get_tickers_by_ids(stock_ids, db)
     return {
         "timestamp": datetime.now(timezone.utc).isoformat(),
         "tickers": sorted(tickers),
