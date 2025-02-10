@@ -142,8 +142,8 @@ async def main():
     """Main entry point for the matching engine consumer."""
 
     # TODO: Use this placeholder market data publisher for now.
-    async def publish_market_data(instrument_id: UUID, trade_data: dict) -> None:
-        logger.info(f"Trade executed for {instrument_id}: {trade_data}")
+    async def publish_market_data(stock_id: UUID, trade_data: dict) -> None:
+        logger.info(f"Trade executed for {stock_id}: {trade_data}")
 
     matching_engine = MatchingEngine(market_data_publisher=publish_market_data)
     consumer = OrderConsumer(
