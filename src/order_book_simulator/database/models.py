@@ -1,4 +1,6 @@
-from sqlalchemy import String
+from uuid import UUID
+from decimal import Decimal
+from sqlalchemy import DECIMAL, Integer, String, Uuid
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
 
@@ -9,5 +11,8 @@ class Base(DeclarativeBase):
 class Stock(Base):
     __tablename__ = "stock"
 
-    id: Mapped[str] = mapped_column(primary_key=True)
+    id: Mapped[UUID] = mapped_column(Uuid, primary_key=True)
     ticker: Mapped[str] = mapped_column(String(20))
+    min_order_size: Mapped[Decimal] = mapped_column(DECIMAL(20, 8))
+    max_order_size: Mapped[Decimal] = mapped_column(DECIMAL(20, 8))
+    price_precision: Mapped[int] = mapped_column(Integer)

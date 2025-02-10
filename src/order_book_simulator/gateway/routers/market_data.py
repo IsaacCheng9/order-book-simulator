@@ -1,26 +1,41 @@
 from datetime import datetime, timezone
 from typing import Any
-from uuid import UUID
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from order_book_simulator.common.cache import order_book_cache
+from order_book_simulator.database.queries import (
+    get_stock_by_ticker,
+    get_tickers_by_ids,
+)
+from order_book_simulator.database.session import get_db
 
 router = APIRouter(tags=["market-data"])
 
 
-@router.get("/order-book/{instrument_id}")
-async def get_order_book(instrument_id: UUID) -> dict[str, Any]:
-    """Returns the current state of the order book for the specified instrument."""
-    snapshot = order_book_cache.get_order_book(instrument_id)
+@router.get("/order-book/{ticker}")
+async def get_order_book(
+    ticker: str, db: AsyncSession = Depends(get_db)
+) -> dict[str, Any]:
+    """Returns the current state of the order book for the specified stock."""
+    # Look up stock_id from ticker
+    stock = await get_stock_by_ticker(ticker, db)
+    if not stock:
+        raise HTTPException(
+            status_code=404,
+            detail=f"No stock found with ticker {ticker}",
+        )
+
+    snapshot = order_book_cache.get_order_book(stock.id)
     if not snapshot:
         raise HTTPException(
             status_code=404,
-            detail=f"No order book found for instrument {instrument_id}",
+            detail=f"No order book found for {ticker}",
         )
 
     return {
-        "instrument_id": str(instrument_id),
+        "ticker": ticker,
         "timestamp": datetime.now(timezone.utc).isoformat(),
         "book": snapshot,
     }
@@ -35,11 +50,13 @@ async def get_all_order_books() -> dict[str, Any]:
     }
 
 
-@router.get("/instruments")
-async def get_active_instruments() -> dict[str, Any]:
-    """Returns a list of all instrument IDs that have an active order book."""
+@router.get("/stocks")
+async def get_active_stocks(db: AsyncSession = Depends(get_db)) -> dict[str, Any]:
+    """Returns a list of all stock tickers that have an active order book."""
     order_books = order_book_cache.get_all_order_books()
+    # Convert UUIDs to tickers
+    tickers = await get_tickers_by_ids(list(order_books.keys()), db)
     return {
         "timestamp": datetime.now(timezone.utc).isoformat(),
-        "instrument_ids": sorted(order_books.keys()),
+        "tickers": sorted(tickers),
     }
