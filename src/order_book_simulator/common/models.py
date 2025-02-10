@@ -2,6 +2,7 @@ from datetime import datetime
 from decimal import Decimal
 from enum import Enum
 from uuid import UUID
+
 from pydantic import BaseModel
 
 
@@ -25,7 +26,7 @@ class OrderStatus(str, Enum):
 
 class OrderRequest(BaseModel):
     user_id: UUID
-    instrument_id: UUID
+    ticker: str
     type: OrderType
     side: OrderSide
     price: Decimal | None = None
@@ -37,7 +38,7 @@ class OrderRequest(BaseModel):
 class OrderResponse(BaseModel):
     id: UUID
     user_id: UUID
-    instrument_id: UUID
+    ticker: str
     type: OrderType
     side: OrderSide
     status: OrderStatus
@@ -49,3 +50,11 @@ class OrderResponse(BaseModel):
     client_order_id: str | None
     created_at: datetime
     updated_at: datetime
+
+
+class Stock(BaseModel):
+    id: UUID
+    ticker: str  # e.g., "AAPL", "MSFT"
+    min_order_size: Decimal
+    max_order_size: Decimal
+    price_precision: int
