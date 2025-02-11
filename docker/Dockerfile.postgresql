@@ -9,7 +9,6 @@ ENV POSTGRES_PASSWORD=orderbook_password
 # Copy SQL schema to docker-entrypoint-initdb.d to ensure it's run on first
 # container startup.
 COPY src/order_book_simulator/database/schema.sql /docker-entrypoint-initdb.d/001-schema.sql
-COPY src/order_book_simulator/database/init_test_data.sql /docker-entrypoint-initdb.d/002-init-data.sql
 
 # Optional: Add any additional configuration files
 # COPY postgres.conf /etc/postgresql/postgresql.conf

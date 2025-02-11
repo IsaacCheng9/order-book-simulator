@@ -51,6 +51,7 @@ class StockLoader:
                         {
                             "id": uuid.uuid4(),
                             "ticker": row["Symbol"],
+                            "company_name": row["Name"],
                             "min_order_size": Decimal("1"),
                             "max_order_size": Decimal("1_000_000"),
                             "price_precision": price_precision,
@@ -70,37 +71,36 @@ class StockLoader:
         logger.info(f"Loaded {len(stocks)} stocks from CSV")
 
         async with AsyncSessionLocal() as session:
-            try:
-                for stock in stocks:
-                    try:
-                        await session.execute(
-                            text("""
-                            INSERT INTO stock (
-                                id, ticker, min_order_size, 
-                                max_order_size, price_precision
-                            ) VALUES (
-                                :id, :ticker, :min_order_size,
-                                :max_order_size, :price_precision
-                            ) ON CONFLICT (ticker) DO UPDATE SET
-                                min_order_size = EXCLUDED.min_order_size,
-                                max_order_size = EXCLUDED.max_order_size,
-                                price_precision = EXCLUDED.price_precision,
-                                updated_at = CURRENT_TIMESTAMP
-                            """),
-                            stock,
-                        )
-                        logger.info(f"Initialised/updated stock {stock['ticker']}")
-                    except Exception as e:
-                        logger.error(
-                            f"Error initialising/updating stock {stock['ticker']}: {e}"
-                        )
-
-                await session.commit()
-                logger.info("Successfully committed all stock updates")
-            except Exception as e:
-                logger.error(f"Database transaction failed: {e}")
-                await session.rollback()
-                raise
+            async with session.begin():
+                try:
+                    for stock in stocks:
+                        try:
+                            await session.execute(
+                                text("""
+                                INSERT INTO stock (
+                                    id, ticker, company_name, min_order_size, 
+                                    max_order_size, price_precision
+                                ) VALUES (
+                                    :id, :ticker, :company_name, :min_order_size,
+                                    :max_order_size, :price_precision
+                                ) ON CONFLICT (ticker) DO UPDATE SET
+                                    company_name = EXCLUDED.company_name,
+                                    min_order_size = EXCLUDED.min_order_size,
+                                    max_order_size = EXCLUDED.max_order_size,
+                                    price_precision = EXCLUDED.price_precision,
+                                    updated_at = CURRENT_TIMESTAMP
+                                """),
+                                stock,
+                            )
+                            logger.info(f"Initialised/updated stock {stock['ticker']}")
+                        except Exception as e:
+                            logger.error(
+                                f"Error processing stock {stock['ticker']}: {e}"
+                            )
+                            raise  # Re-raise to trigger rollback
+                except Exception as e:
+                    logger.error(f"Database transaction failed: {e}")
+                    raise  # Session.begin() will handle rollback
 
 
 async def get_all_stocks():

@@ -15,6 +15,7 @@ CREATE TABLE stock (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     -- e.g., "AAPL", "MSFT"
     ticker VARCHAR(20) NOT NULL UNIQUE,
+    company_name VARCHAR(255) NOT NULL,
     -- Minimum shares per order
     min_order_size NUMERIC(20, 8) NOT NULL,
     -- Maximum shares per order

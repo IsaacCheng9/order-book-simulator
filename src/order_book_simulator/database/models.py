@@ -13,6 +13,7 @@ class Stock(Base):
 
     id: Mapped[UUID] = mapped_column(Uuid, primary_key=True)
     ticker: Mapped[str] = mapped_column(String(20))
+    company_name: Mapped[str] = mapped_column(String(255))
     min_order_size: Mapped[Decimal] = mapped_column(DECIMAL(20, 8))
     max_order_size: Mapped[Decimal] = mapped_column(DECIMAL(20, 8))
     price_precision: Mapped[int] = mapped_column(Integer)
