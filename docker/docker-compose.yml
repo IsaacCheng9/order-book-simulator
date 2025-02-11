@@ -11,6 +11,12 @@ services:
       - postgres_data:/var/lib/postgresql/data
     ports:
       - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U orderbook_user -d orderbook_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
 
   kafka:
     image: confluentinc/cp-kafka:latest
@@ -52,6 +58,8 @@ services:
       dockerfile: docker/Dockerfile.gateway
     depends_on:
       kafka:
+        condition: service_healthy
+      postgres:
         condition: service_healthy
     environment:
       - DATABASE_URL=postgresql+asyncpg://orderbook_user:orderbook_password@postgres:5432/orderbook_db

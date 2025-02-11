@@ -2,10 +2,11 @@ from fastapi import HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from order_book_simulator.common.models import OrderRequest, OrderType
+from order_book_simulator.database.models import Stock
 from order_book_simulator.database.queries import get_stock_by_ticker
 
 
-async def validate_order(order_request: OrderRequest, db: AsyncSession) -> bool:
+async def validate_order(order_request: OrderRequest, db: AsyncSession) -> Stock:
     """
     Validates an equity order request against business rules and current market
     conditions.
@@ -18,7 +19,7 @@ async def validate_order(order_request: OrderRequest, db: AsyncSession) -> bool:
         HTTPException if validation fails.
 
     Returns:
-        True if the order request is valid.
+        The validated Stock object.
     """
     # Look up stock by ticker
     stock = await get_stock_by_ticker(order_request.ticker, db)
@@ -50,4 +51,4 @@ async def validate_order(order_request: OrderRequest, db: AsyncSession) -> bool:
     if order_request.type == OrderType.LIMIT and not order_request.price:
         raise HTTPException(status_code=400, detail="Limit orders must specify a price")
 
-    return True
+    return stock
