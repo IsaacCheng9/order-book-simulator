@@ -65,6 +65,8 @@ services:
       - DATABASE_URL=postgresql+asyncpg://orderbook_user:orderbook_password@postgres:5432/orderbook_db
     ports:
       - "8000:8000"
+    volumes:
+      - ../resources:/app/resources
 
   matching:
     build:
