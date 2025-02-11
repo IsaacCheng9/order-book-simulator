@@ -21,10 +21,11 @@ async def create_order(order_request: OrderRequest, db=Depends(get_db)):
         )
 
     async with db.begin():
-        await validate_order(order_request, db)
+        stock = await validate_order(order_request, db)
 
         order_record = {
             "id": uuid4(),
+            "stock_id": stock.id,
             **order_request.model_dump(),
             "status": OrderStatus.PENDING,
             "filled_quantity": Decimal("0"),

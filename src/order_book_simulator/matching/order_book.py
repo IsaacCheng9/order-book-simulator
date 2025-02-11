@@ -33,11 +33,11 @@ class OrderBookEntry:
 @dataclass
 class OrderBook:
     """
-    Manages the limit order book for a single instrument.
+    Manages the limit order book for a single stock.
     """
 
-    def __init__(self, instrument_id: UUID):
-        self.instrument_id = instrument_id
+    def __init__(self, stock_id: UUID):
+        self.stock_id = stock_id
         self.bids: dict[Decimal, AggregatedLevel] = {}
         self.asks: dict[Decimal, AggregatedLevel] = {}
         self._bid_orders: list[OrderBookEntry] = []
@@ -104,7 +104,7 @@ class OrderBook:
                     "seller_order_id": incoming_order["id"]
                     if not is_buy
                     else resting_order.id,
-                    "instrument_id": self.instrument_id,
+                    "stock_id": self.stock_id,
                 }
                 trades.append(trade)
 

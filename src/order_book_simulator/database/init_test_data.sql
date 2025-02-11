@@ -1,18 +1,20 @@
--- Insert test instruments
-INSERT INTO instrument (
-    id,
-    symbol,
-    base_currency,
-    quote_currency,
-    min_order_size,
-    max_order_size,
-    price_precision
-) VALUES (
-    '00000000-0000-0000-0000-000000000001',  -- Fixed UUID for testing
-    'BTC-USD',                                -- Trading pair
-    'BTC',                                    -- Base currency
-    'USD',                                    -- Quote currency
-    0.0001,                                   -- Minimum order size
-    100.0,                                    -- Maximum order size
-    2                                         -- Price precision (decimal places)
-);
+-- Insert test stocks
+INSERT INTO stock (
+        id,
+        ticker,
+        min_order_size,
+        max_order_size,
+        price_precision
+    )
+VALUES (
+        -- Fixed UUID for testing
+        '00000000-0000-0000-0000-000000000001',
+        -- Stock ticker
+        'AAPL',
+        -- Minimum order size (1 share)
+        1,
+        -- Maximum order size (100k shares)
+        100000,
+        -- Price precision (cents)
+        2
+    );

@@ -1,10 +1,13 @@
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, MagicMock
 from uuid import UUID, uuid4
 
 import pytest
+from sqlalchemy.ext.asyncio import AsyncSession
 from starlette.testclient import TestClient
 
 from order_book_simulator.common.cache import order_book_cache
+from order_book_simulator.database.models import Base
+from order_book_simulator.database.session import get_db, test_engine
 from order_book_simulator.gateway.app import app, app_state
 from order_book_simulator.matching.engine import MatchingEngine
 from order_book_simulator.matching.order_book import OrderBook
@@ -14,8 +17,8 @@ class MockMarketDataPublisher:
     def __init__(self):
         self.published_updates = []
 
-    async def __call__(self, instrument_id: UUID, market_data: dict) -> None:
-        self.published_updates.append((instrument_id, market_data))
+    async def __call__(self, stock_id: UUID, market_data: dict) -> None:
+        self.published_updates.append((stock_id, market_data))
 
 
 @pytest.fixture(autouse=True)
@@ -42,26 +45,74 @@ def matching_engine(market_data_publisher) -> MatchingEngine:
     return engine
 
 
+class MockPostgres:
+    """Mock PostgreSQL instance for testing."""
+
+    def stop(self):
+        pass
+
+    def url(self):
+        return "postgresql://mock:5432/mockdb"
+
+
+@pytest.fixture(scope="session", autouse=True)
+def postgresql_instance():
+    """Creates a mock PostgreSQL instance for testing."""
+    return MockPostgres()
+
+
 @pytest.fixture
-def test_client(mock_kafka_producer, monkeypatch):
-    """Creates a test client for API testing."""
+def db_session() -> AsyncSession:
+    """Creates a mock database session for testing."""
+    session = AsyncMock(spec=AsyncSession)
 
-    # Mock the AIOKafkaProducer constructor
-    def mock_producer_init(*args, **kwargs):
-        return mock_kafka_producer
+    async def mock_execute(query):
+        result = MagicMock()
+        query_str = str(query)
 
-    monkeypatch.setattr(
-        "order_book_simulator.gateway.producer.AIOKafkaProducer", mock_producer_init
-    )
+        # Handle get_tickers_by_ids query
+        if "SELECT stock.ticker" in query_str and hasattr(query, "compile"):
+            compiled = query.compile()
+            if hasattr(compiled.params, "get"):
+                stock_ids = compiled.params.get("id_1", [])
+                mock_rows = [(f"STOCK_{id}",) for id in stock_ids]
+                result.__iter__.return_value = iter(mock_rows)
+                return result
 
-    with TestClient(app) as client:
-        yield client
+        # Handle stock lookup by ID
+        if "stock" in query_str.lower() and "WHERE" in query_str:
+            stock = MagicMock()
+            if hasattr(query.whereclause, "right"):
+                stock.id = query.whereclause.right.value
+            else:
+                # Handle IN clause for multiple IDs
+                stock.id = query.whereclause.right.clauses[0].value
+            stock.ticker = f"STOCK_{stock.id}"
+            result.scalar_one_or_none.return_value = stock
+            return result
+
+        return result
+
+    session.execute = mock_execute
+    session.commit = AsyncMock()
+    return session
+
+
+@pytest.fixture
+def test_client(db_session):
+    """Creates a test client with mock database."""
+
+    def override_get_db():
+        yield db_session
+
+    app.dependency_overrides[get_db] = override_get_db
+    return TestClient(app)
 
 
 @pytest.fixture
 def order_book() -> OrderBook:
     """Creates a fresh order book for testing."""
-    return OrderBook(instrument_id=uuid4())
+    return OrderBook(stock_id=uuid4())
 
 
 @pytest.fixture(autouse=True)
@@ -77,12 +128,26 @@ def mock_redis(monkeypatch):
             return mock_data.get(key)
 
         def keys(self, pattern: str) -> list[str]:
+            if pattern == "order_book:*":
+                return [k for k in mock_data.keys() if k.startswith("order_book:")]
             if pattern.endswith("*"):
                 prefix = pattern[:-1]
                 return [k for k in mock_data.keys() if k.startswith(prefix)]
             return [k for k in mock_data.keys() if k == pattern]
 
-    # Replace the Redis instance in the cache module directly
+        def exists(self, key: str) -> bool:
+            return key in mock_data
+
     order_book_cache.redis = MockRedis()  # type: ignore
     yield
     mock_data.clear()
+
+
+@pytest.fixture(autouse=True)
+async def create_test_database():
+    """Creates test database tables."""
+    async with test_engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+    yield
+    async with test_engine.begin() as conn:
+        await conn.run_sync(Base.metadata.drop_all)

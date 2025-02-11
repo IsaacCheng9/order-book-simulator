@@ -95,7 +95,7 @@ class OrderProducer:
         # Convert types before serialising.
         kafka_record = {
             "id": str(order_record["id"]),
-            "instrument_id": str(order_record["instrument_id"]),
+            "stock_id": str(order_record["stock_id"]),
             "type": order_record["type"].value,
             "side": order_record["side"].value,
             "price": str(order_record["price"]) if order_record["price"] else None,

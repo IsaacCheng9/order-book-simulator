@@ -18,40 +18,40 @@ class OrderBookCache:
         """
         self.redis: Redis = redis.from_url(redis_url)
 
-    def _get_order_book_key(self, instrument_id: UUID) -> str:
+    def _get_order_book_key(self, stock_id: UUID) -> str:
         """
         Gets the Redis key for an order book.
 
         Args:
-            instrument_id: The instrument ID.
+            stock_id: The stock ID.
 
         Returns:
             The Redis key for the order book.
         """
-        return f"order_book:{instrument_id}"
+        return f"order_book:{stock_id}"
 
-    def set_order_book(self, instrument_id: UUID, snapshot: dict[str, Any]) -> None:
+    def set_order_book(self, stock_id: UUID, snapshot: dict[str, Any]) -> None:
         """
         Stores an order book snapshot in Redis.
 
         Args:
-            instrument_id: The instrument ID.
+            stock_id: The stock ID.
             snapshot: The order book snapshot.
         """
-        key = self._get_order_book_key(instrument_id)
+        key = self._get_order_book_key(stock_id)
         self.redis.set(key, json.dumps(snapshot, default=str))  # Use str for Decimal
 
-    def get_order_book(self, instrument_id: UUID) -> dict[str, Any] | None:
+    def get_order_book(self, stock_id: UUID) -> dict[str, Any] | None:
         """
         Gets an order book snapshot from Redis.
 
         Args:
-            instrument_id: The instrument ID.
+            stock_id: The stock ID.
 
         Returns:
             The order book snapshot if it exists, None otherwise.
         """
-        key = self._get_order_book_key(instrument_id)
+        key = self._get_order_book_key(stock_id)
         data = self.redis.get(key)
         return json.loads(data) if data else None  # type: ignore
 
@@ -60,20 +60,20 @@ class OrderBookCache:
         Gets all order book snapshots from Redis.
 
         Returns:
-            A dictionary of order book snapshots keyed by instrument ID.
+            A dictionary of order book snapshots keyed by stock ID.
         """
         keys = self.redis.keys("order_book:*")
         result = {}
         for key in keys:  # type: ignore
             # Handle string keys from mock Redis
-            instrument_id = (
+            stock_id = (
                 key.split(":")[-1]
                 if isinstance(key, str)
                 else key.decode().split(":")[-1]
             )
             data = self.redis.get(key)
             if data:
-                result[instrument_id] = json.loads(data)  # type: ignore
+                result[stock_id] = json.loads(data)  # type: ignore
         return dict(sorted(result.items()))
 
 
