@@ -8,6 +8,7 @@ authors = [
 ]
 requires-python = ">=3.13"
 dependencies = [
+    "aiohttp>=3.11.12",
     "aiokafka>=0.12.0",
     "asyncio>=3.4.3",
     "asyncpg>=0.30.0",
@@ -20,7 +21,7 @@ dependencies = [
 ]
 
 [project.scripts]
-order-book-simulator = "order_book_simulator:main"
+order-simulator = "order_book_simulator.simulator.cli:main"
 
 [build-system]
 requires = ["hatchling"]
