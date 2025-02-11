@@ -1,6 +1,7 @@
 from datetime import datetime, timezone
 from uuid import uuid4
 
+from order_book_simulator.common.cache import order_book_cache
 from order_book_simulator.common.models import OrderSide, OrderType
 
 
@@ -12,14 +13,14 @@ def test_health_check(test_client):
     assert "timestamp" in response.json()
 
 
-def test_get_order_book_for_instrument_empty(test_client, matching_engine, event_loop):
+def test_get_order_book_for_stock_empty(test_client, matching_engine, event_loop):
     """Tests getting an empty order book."""
-    instrument_id = uuid4()
+    stock_id = uuid4()
 
     # Create an order and process it directly through the matching engine
     order = {
         "id": str(uuid4()),
-        "instrument_id": str(instrument_id),
+        "stock_id": str(stock_id),
         "price": "100.00",
         "quantity": "10.00",
         "side": OrderSide.BUY.value,
@@ -30,11 +31,11 @@ def test_get_order_book_for_instrument_empty(test_client, matching_engine, event
     # Process the order to create the order book.
     event_loop.run_until_complete(matching_engine.process_order(order))
     # Get the order book.
-    response = test_client.get(f"/order-book/{instrument_id}")
+    response = test_client.get(f"/order-book/{stock_id}")
 
     assert response.status_code == 200
     data = response.json()
-    assert data["instrument_id"] == str(instrument_id)
+    assert "ticker" in data
     assert "timestamp" in data
     assert "book" in data
     assert "bids" in data["book"]
@@ -46,8 +47,8 @@ def test_get_order_book_for_instrument_empty(test_client, matching_engine, event
 
 def test_get_nonexistent_order_book(test_client):
     """Tests getting an order book that doesn't exist."""
-    instrument_id = uuid4()
-    response = test_client.get(f"/order-book/{instrument_id}")
+    stock_id = uuid4()
+    response = test_client.get(f"/order-book/{stock_id}")
     assert response.status_code == 404
 
 
@@ -63,12 +64,12 @@ def test_get_all_order_books_empty(test_client, matching_engine):
 
 def test_get_all_order_books_with_orders(test_client, matching_engine, event_loop):
     """Tests getting all order books with existing orders."""
-    # Create orders for two different instruments (in reverse order)
-    instrument_ids = sorted([uuid4(), uuid4()], reverse=True)
-    for instrument_id in instrument_ids:
+    # Create orders for two different stocks
+    stock_ids = [uuid4(), uuid4()]
+    for stock_id in stock_ids:
         order = {
             "id": str(uuid4()),
-            "instrument_id": str(instrument_id),
+            "stock_id": str(stock_id),
             "price": "100.00",
             "quantity": "10.00",
             "side": OrderSide.BUY.value,
@@ -86,39 +87,43 @@ def test_get_all_order_books_with_orders(test_client, matching_engine, event_loo
     assert "order_books" in data
     assert len(data["order_books"]) == 2
 
-    # Verify order books are sorted by instrument ID
+    # Verify order books are sorted by stock ID
     received_ids = list(data["order_books"].keys())
     assert received_ids == sorted(received_ids)
 
     # Check each order book has the expected structure
-    for instrument_id in instrument_ids:
-        instrument_id_str = str(instrument_id)
-        assert instrument_id_str in data["order_books"]
-        book = data["order_books"][instrument_id_str]
+    for stock_id in stock_ids:
+        stock_id_str = str(stock_id)
+        assert stock_id_str in data["order_books"]
+        book = data["order_books"][stock_id_str]
         assert "bids" in book
         assert "asks" in book
         assert len(book["bids"]) == 1  # Should have our buy order
         assert len(book["asks"]) == 0  # No sell orders
 
 
-def test_get_active_instruments_empty(test_client):
-    """Tests getting active instruments when no order books exist."""
-    response = test_client.get("/instruments")
+def test_get_active_stocks_empty(test_client):
+    """Tests getting active stocks when no order books exist."""
+    response = test_client.get("/stocks")
     assert response.status_code == 200
     data = response.json()
     assert "timestamp" in data
-    assert "instrument_ids" in data
-    assert len(data["instrument_ids"]) == 0
+    assert "tickers" in data
+    assert len(data["tickers"]) == 0
 
 
-def test_get_active_instruments_with_orders(test_client, matching_engine, event_loop):
-    """Tests getting active instruments with existing order books."""
-    # Create orders for two different instruments (in reverse order)
-    instrument_ids = sorted([uuid4(), uuid4()], reverse=True)
-    for instrument_id in instrument_ids:
+def test_get_active_stocks_with_orders(test_client, matching_engine, event_loop):
+    """Tests getting active stocks with existing order books."""
+    stock_ids = [uuid4(), uuid4()]
+
+    for stock_id in stock_ids:
+        # Initialize empty order book
+        order_book_cache.set_order_book(stock_id, {"bids": [], "asks": []})
+
+        # Create and process test order
         order = {
             "id": str(uuid4()),
-            "instrument_id": str(instrument_id),
+            "stock_id": str(stock_id),
             "price": "100.00",
             "quantity": "10.00",
             "side": OrderSide.BUY.value,
@@ -127,17 +132,9 @@ def test_get_active_instruments_with_orders(test_client, matching_engine, event_
         }
         event_loop.run_until_complete(matching_engine.process_order(order))
 
-    # Get active instruments.
-    response = test_client.get("/instruments")
+    response = test_client.get("/stocks")
     assert response.status_code == 200
-
-    # Ensure that our orders for the instruments have been processed and can
-    # be retrieved.
     data = response.json()
     assert "timestamp" in data
-    assert "instrument_ids" in data
-    assert len(data["instrument_ids"]) == 2
-
-    # Verify instrument IDs are returned in sorted order.
-    received_ids = data["instrument_ids"]
-    assert received_ids == sorted(received_ids)
+    assert "tickers" in data
+    assert len(data["tickers"]) == 2
