@@ -10,7 +10,7 @@ def test_get_active_stocks_with_orders(test_client, matching_engine, event_loop)
     stock_ids = [uuid4(), uuid4()]
 
     for stock_id in stock_ids:
-        # Initialize empty order book
+        # Initialise empty order book
         order_book_cache.set_order_book(stock_id, {"bids": [], "asks": []})
 
         # Create and process test order
