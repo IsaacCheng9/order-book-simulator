@@ -54,7 +54,8 @@ class OrderResponse(BaseModel):
 
 class Stock(BaseModel):
     id: UUID
-    ticker: str  # e.g., "AAPL", "MSFT"
+    ticker: str
+    company_name: str
     min_order_size: Decimal
     max_order_size: Decimal
     price_precision: int
