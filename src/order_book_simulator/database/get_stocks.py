@@ -1,4 +1,10 @@
-"""Gets stock data in the database from NASDAQ CSV file."""
+"""
+Gets stock data in the database from NASDAQ and NYSE listings.
+
+Sources:
+https://www.nasdaq.com/market-activity/stocks/screener
+https://github.com/datasets/nyse-other-listings/blob/main/data/nyse-listed.csv
+"""
 
 import asyncio
 import csv
@@ -16,23 +22,23 @@ logger = logging.getLogger(__name__)
 
 
 class StockLoader:
-    def __init__(self, csv_path: str = "/app/resources/nasdaq_stocks_2025_02_11.csv"):
-        self.csv_path = Path(csv_path)
-        if not self.csv_path.exists():
+    def __init__(self, nasdaq_listings_path: str = "/app/resources/nasdaq_stocks_2025_02_11.csv"):
+        self.nasdaq_listings_path = Path(nasdaq_listings_path)
+        if not self.nasdaq_listings_path.exists():
             raise FileNotFoundError(
-                f"CSV file not found: {csv_path}. Current directory: {Path.cwd()}"
+                f"CSV file not found: {nasdaq_listings_path}. Current directory: {Path.cwd()}"
             )
 
-    def get_stock_data(self) -> list[dict[str, Any]]:
+    def get_nasdaq_stocks(self) -> list[dict[str, Any]]:
         """
-        Loads stock data from NASDAQ CSV file.
+        Loads stock data from NASDAQ listings.
 
         Returns:
             A list of dictionaries containing stock data that matches the
-            database schema for the Stock table.
+            database schema for the stock table.
         """
         stocks = []
-        with open(self.csv_path, "r", encoding="utf-8") as file:
+        with open(self.nasdaq_listings_path, "r", encoding="utf-8") as file:
             reader = csv.DictReader(file)
             for row in reader:
                 try:
@@ -67,13 +73,13 @@ class StockLoader:
 
     async def insert_stocks_into_db(self) -> None:
         """Insert stocks into the database."""
-        stocks = self.get_stock_data()
-        logger.info(f"Loaded {len(stocks)} stocks from CSV")
+        nasdaq_stocks = self.get_nasdaq_stocks()
+        logger.info(f"Loaded {len(nasdaq_stocks)} stocks from CSV")
 
         async with AsyncSessionLocal() as session:
             async with session.begin():
                 try:
-                    for stock in stocks:
+                    for stock in nasdaq_stocks:
                         try:
                             await session.execute(
                                 text("""
