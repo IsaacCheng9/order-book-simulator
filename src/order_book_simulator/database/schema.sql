@@ -87,3 +87,6 @@ CREATE TRIGGER update_stocks_modtime BEFORE
 UPDATE ON stock FOR EACH ROW EXECUTE FUNCTION update_modified_column();
 CREATE TRIGGER update_orders_modtime BEFORE
 UPDATE ON order_ FOR EACH ROW EXECUTE FUNCTION update_modified_column();
+-- Each combination of user_id and client_order_id must be unique.
+CREATE UNIQUE INDEX idx_unique_client_order_per_user ON order_(user_id, client_order_id)
+WHERE client_order_id IS NOT NULL;
