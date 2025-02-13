@@ -1,18 +1,18 @@
 """
-Gets stock data in the database from NASDAQ and NYSE listings.
+Gets stock data from a CSV downloaded from the NASDAQ website, which contains a
+list of US stocks from the NASDAQ, NYSE, and AMEX exchanges.
 
 Sources:
 https://www.nasdaq.com/market-activity/stocks/screener
-https://github.com/datasets/nyse-other-listings/blob/main/data/nyse-listed.csv
 """
 
 import asyncio
 import csv
 import logging
+import uuid
 from decimal import Decimal
 from pathlib import Path
 from typing import Any
-import uuid
 
 from sqlalchemy import text
 
@@ -23,25 +23,18 @@ logger = logging.getLogger(__name__)
 
 class StockLoader:
     def __init__(
-        self,
-        nasdaq_listings_path: str = "/app/resources/nasdaq_stocks_2025_02_11.csv",
-        nyse_listings_path: str = "/app/resources/nyse_stocks_2025_02_12.csv",
+        self, nasdaq_listings_path: str = "/app/resources/nasdaq_stocks_2025_02_11.csv"
     ):
         self.nasdaq_listings_path = Path(nasdaq_listings_path)
-        self.nyse_listings_path = Path(nyse_listings_path)
         self.stocks: dict[str, dict[str, Any]] = {}  # ticker -> stock data
 
         if not self.nasdaq_listings_path.exists():
             raise FileNotFoundError(
                 f"NASDAQ listings not found: {nasdaq_listings_path}. Current directory: {Path.cwd()}"
             )
-        if not self.nyse_listings_path.exists():
-            raise FileNotFoundError(
-                f"NYSE listings not found: {nyse_listings_path}. Current directory: {Path.cwd()}"
-            )
 
-    def load_nasdaq_stocks(self) -> None:
-        """Loads stock data from NASDAQ listings into self.stocks."""
+    def get_stocks(self) -> None:
+        """Loads stock data from the CSV file into self.stocks."""
         with open(self.nasdaq_listings_path, "r", encoding="utf-8") as file:
             reader = csv.DictReader(file)
             for row in reader:
@@ -74,48 +67,10 @@ class StockLoader:
 
         logger.info(f"Loaded {len(self.stocks)} stocks from NASDAQ")
 
-    def load_nyse_stocks(self) -> None:
-        """Loads additional stock data from NYSE listings into self.stocks."""
-        with open(self.nyse_listings_path, "r", encoding="utf-8") as file:
-            reader = csv.DictReader(file)
-            initial_count = len(self.stocks)
-
-            for row in reader:
-                try:
-                    ticker = row["ACT Symbol"]
-                    if ticker in self.stocks:
-                        logger.info(
-                            f"Skipping NYSE stock {ticker} - already exists in NASDAQ"
-                        )
-                        continue
-
-                    self.stocks[ticker] = {
-                        "id": uuid.uuid4(),
-                        "ticker": ticker,
-                        # Some stocks have quotations at the start and end and
-                        # some don't.
-                        "company_name": row["Company Name"].replace('"', ""),
-                        "min_order_size": Decimal("1"),
-                        "max_order_size": Decimal("1_000_000"),
-                        # NYSE stock listings CSV doesn't have last sale, so we
-                        # have to assume a default precision.
-                        "price_precision": 4,
-                    }
-                    logger.info(f"Loaded NYSE data for {ticker}")
-                except (ValueError, KeyError) as e:
-                    logger.error(
-                        f"Error processing NYSE row {row.get('Symbol', 'UNKNOWN')}: {e}"
-                    )
-
-        new_stocks = len(self.stocks) - initial_count
-        logger.info(f"Loaded {new_stocks} additional stocks from NYSE")
-
     async def insert_stocks_into_db(self) -> None:
         """Load all stocks and insert them into the database."""
-        # Load stocks from both exchanges
-        self.load_nasdaq_stocks()
-        self.load_nyse_stocks()
-        logger.info(f"Total of {len(self.stocks)} unique stocks to process")
+        self.get_stocks()
+        logger.info(f"Total of {len(self.stocks)} stocks to process")
 
         async with AsyncSessionLocal() as session:
             async with session.begin():
@@ -150,12 +105,12 @@ class StockLoader:
                     raise  # Session.begin() will handle rollback
 
 
-async def get_all_stocks():
-    """Get all stocks."""
+async def load_all_us_stocks():
+    """Gets all US stocks and loads them into the database."""
     initialiser = StockLoader()
     await initialiser.insert_stocks_into_db()
 
 
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO)
-    asyncio.run(get_all_stocks())
+    asyncio.run(load_all_us_stocks())
