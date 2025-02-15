@@ -77,6 +77,9 @@ CREATE INDEX idx_trades_stock ON trade(stock_id);
 CREATE INDEX idx_market_data_stock ON market_data_snapshot(stock_id);
 CREATE INDEX idx_orders_status ON order_(status);
 CREATE INDEX idx_trades_time ON trade(trade_time);
+CREATE INDEX idx_orders_created_at ON order_(created_at);
+CREATE INDEX idx_orders_type_side ON order_(type, side);
+CREATE INDEX idx_orders_price ON order_(price) WHERE type = 'LIMIT';
 -- Function to automatically update the 'updated_at' timestamp
 CREATE OR REPLACE FUNCTION update_modified_column() RETURNS TRIGGER AS $$ BEGIN NEW.updated_at = CURRENT_TIMESTAMP;
 RETURN NEW;
@@ -87,3 +90,6 @@ CREATE TRIGGER update_stocks_modtime BEFORE
 UPDATE ON stock FOR EACH ROW EXECUTE FUNCTION update_modified_column();
 CREATE TRIGGER update_orders_modtime BEFORE
 UPDATE ON order_ FOR EACH ROW EXECUTE FUNCTION update_modified_column();
+-- Each combination of user_id and client_order_id must be unique.
+CREATE UNIQUE INDEX idx_unique_client_order_per_user ON order_(user_id, client_order_id)
+WHERE client_order_id IS NOT NULL;

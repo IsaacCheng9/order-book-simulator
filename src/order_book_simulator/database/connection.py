@@ -1,7 +1,6 @@
 import os
 
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
-from sqlalchemy.pool import NullPool
 
 # Use environment variables for configuration.
 DATABASE_URL = os.getenv(
@@ -13,13 +12,18 @@ DATABASE_URL = os.getenv(
 # connection management.
 engine = create_async_engine(
     DATABASE_URL,
-    poolclass=NullPool,  # Disable connection pooling
-    pool_pre_ping=True,  # Test connections before using them
+    pool_size=20,  # Larger connection pool
+    max_overflow=30,  # Allow more temporary connections
+    pool_timeout=30,  # Longer timeout
+    pool_pre_ping=True,  # Check connection health
+    echo=False,  # Disable SQL logging for performance
 )
 
 # Create an async session factory for database interactions.
 AsyncSessionLocal = async_sessionmaker(
-    bind=engine, class_=AsyncSession, expire_on_commit=False
+    engine,
+    class_=AsyncSession,
+    expire_on_commit=False,
 )
 
 
