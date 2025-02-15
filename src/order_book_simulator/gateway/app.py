@@ -7,7 +7,7 @@ from fastapi import FastAPI
 from order_book_simulator.database.get_stocks import load_all_us_stocks
 from order_book_simulator.gateway.app_state import app_state
 from order_book_simulator.gateway.producer import OrderProducer
-from order_book_simulator.gateway.routers import health, market_data, orders
+from order_book_simulator.gateway.routers import health_router, market_data_router, order_book_router
 
 logger = logging.getLogger(__name__)
 
@@ -42,6 +42,6 @@ app = FastAPI(
 )
 
 # We have separate routers for each of the resources.
-app.include_router(health.router, prefix="/health")
-app.include_router(orders.router, prefix="/orders")
-app.include_router(market_data.router)
+app.include_router(health_router.health_router, prefix="/health", tags=["health"])
+app.include_router(order_book_router.order_book_router, prefix="/order-book", tags=["order-book"])
+app.include_router(market_data_router.market_data_router, tags=["market-data"])

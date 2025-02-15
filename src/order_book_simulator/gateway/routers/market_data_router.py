@@ -12,10 +12,10 @@ from order_book_simulator.database.queries import (
 )
 from order_book_simulator.database.session import get_db
 
-router = APIRouter(tags=["market-data"])
+market_data_router = APIRouter()
 
 
-@router.get("/order-book/{ticker}")
+@market_data_router.get("/order-book/{ticker}")
 async def get_order_book(
     ticker: str, db: AsyncSession = Depends(get_db)
 ) -> dict[str, Any]:
@@ -42,7 +42,7 @@ async def get_order_book(
     }
 
 
-@router.get("/order-books")
+@market_data_router.get("/order-books")
 async def get_all_order_books() -> dict[str, Any]:
     """Returns the current state of all order books."""
     return {
@@ -51,7 +51,7 @@ async def get_all_order_books() -> dict[str, Any]:
     }
 
 
-@router.get("/stocks")
+@market_data_router.get("/stocks")
 async def get_active_stocks(db: AsyncSession = Depends(get_db)) -> dict[str, Any]:
     """Returns a list of all stock tickers that have an active order book."""
     order_books = order_book_cache.get_all_order_books()

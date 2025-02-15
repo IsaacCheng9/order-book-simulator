@@ -9,10 +9,10 @@ from order_book_simulator.database.connection import get_db
 from order_book_simulator.gateway.app_state import app_state
 from order_book_simulator.gateway.validation import validate_order
 
-router = APIRouter(tags=["orders"])
+order_book_router = APIRouter()
 
 
-@router.post("", response_model=OrderResponse)
+@order_book_router.post("", response_model=OrderResponse)
 async def create_order(order_request: OrderRequest, db=Depends(get_db)):
     start_time = datetime.now(timezone.utc)
     if app_state.producer is None:
