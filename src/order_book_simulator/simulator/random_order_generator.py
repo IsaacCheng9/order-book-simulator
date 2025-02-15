@@ -28,12 +28,22 @@ class RandomOrderGenerator:
         self.base_prices = base_prices
         self.min_order_sizes = min_order_sizes
         self.max_order_sizes = max_order_sizes
-        self.orders_per_second = orders_per_second
+        self._orders_per_second = orders_per_second
+        self._sleep_time = 1.0 / orders_per_second
         self.price_volatility = price_volatility
         self.market_order_ratio = market_order_ratio
         self._order_counter = 0
         self._last_prices = {ticker: price for ticker, price in base_prices.items()}
         self._client_id = str(uuid4())  # Add unique client ID per generator instance
+
+    @property
+    def orders_per_second(self) -> int:
+        return self._orders_per_second
+
+    @orders_per_second.setter
+    def orders_per_second(self, value: int):
+        self._orders_per_second = value
+        self._sleep_time = 1.0 / value  # Update sleep time when rate changes
 
     def _generate_order_id(self) -> str:
         """
@@ -130,11 +140,9 @@ class RandomOrderGenerator:
         Yields:
             A randomly generated order every 1/ orders_per_second seconds.
         """
-        sleep_time = 1.0 / self.orders_per_second
-
         while True:
             yield self._generate_single_order_randomly()
-            await asyncio.sleep(sleep_time)
+            await asyncio.sleep(self._sleep_time)
 
     def generate_orders(self) -> Iterator[OrderRequest]:
         """
