@@ -13,6 +13,7 @@ class RandomOrderGenerator:
     Generates random orders with configurable parameters and adjusts the prices
     over time with a random walk to simulate more realistic price movements.
     """
+
     def __init__(
         self,
         tickers: list[str],
@@ -20,7 +21,7 @@ class RandomOrderGenerator:
         # Set the minimum and maximum order sizes for each ticker.
         min_order_sizes: dict[str, Decimal],
         max_order_sizes: dict[str, Decimal],
-        orders_per_second: int = 100,
+        orders_per_second: float = 100.0,
         price_volatility: float = 0.02,  # 2% price volatility
         market_order_ratio: float = 0.3,  # 30% market orders by default
     ):
@@ -37,13 +38,13 @@ class RandomOrderGenerator:
         self._client_id = str(uuid4())  # Add unique client ID per generator instance
 
     @property
-    def orders_per_second(self) -> int:
+    def orders_per_second(self) -> float:
         return self._orders_per_second
 
     @orders_per_second.setter
-    def orders_per_second(self, value: int):
+    def orders_per_second(self, value: float) -> None:
         self._orders_per_second = value
-        self._sleep_time = 1.0 / value  # Update sleep time when rate changes
+        self._sleep_time = 1.0 / value
 
     def _generate_order_id(self) -> str:
         """
