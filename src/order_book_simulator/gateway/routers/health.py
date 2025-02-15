@@ -7,12 +7,12 @@ from order_book_simulator.gateway.app_state import app_state
 router = APIRouter(tags=["health"])
 
 
-@router.get("/health")
+@router.get("")
 async def health_check():
     return {"status": "healthy", "timestamp": datetime.now(), "service": "gateway"}
 
 
-@router.get("/health/kafka")
+@router.get("/kafka")
 async def kafka_health() -> dict[str, str]:
     """Checks the Kafka producer's connectivity status."""
     status = {
