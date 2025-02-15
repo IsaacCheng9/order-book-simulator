@@ -9,7 +9,7 @@ from order_book_simulator.database.connection import get_db
 from order_book_simulator.gateway.app_state import app_state
 from order_book_simulator.gateway.validation import validate_order
 
-router = APIRouter(prefix="/orders", tags=["orders"])
+router = APIRouter(tags=["orders"])
 
 
 @router.post("", response_model=OrderResponse)
