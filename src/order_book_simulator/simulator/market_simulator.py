@@ -328,7 +328,7 @@ class MarketSimulator:
             return False
         try:
             async with session.post(
-                f"{api_url.rstrip('/')}/orders",
+                f"{api_url.rstrip('/')}/order-book",
                 json={
                     "user_id": str(order.user_id),
                     "ticker": order.ticker,
