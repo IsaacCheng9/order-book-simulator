@@ -4,15 +4,15 @@ from fastapi import APIRouter, HTTPException
 
 from order_book_simulator.gateway.app_state import app_state
 
-router = APIRouter(tags=["health"])
+health_router = APIRouter()
 
 
-@router.get("/health")
+@health_router.get("")
 async def health_check():
     return {"status": "healthy", "timestamp": datetime.now(), "service": "gateway"}
 
 
-@router.get("/health/kafka")
+@health_router.get("/kafka")
 async def kafka_health() -> dict[str, str]:
     """Checks the Kafka producer's connectivity status."""
     status = {

@@ -284,8 +284,15 @@ class MarketSimulator:
             finally:
                 self.order_queue.task_done()
 
-    def _create_http_client(self) -> tuple[aiohttp.TCPConnector, aiohttp.ClientTimeout]:
-        """Creates HTTP client settings."""
+    def _set_up_http_client_settings(
+        self,
+    ) -> tuple[aiohttp.TCPConnector, aiohttp.ClientTimeout]:
+        """
+        Sets up HTTP client settings.
+
+        Returns:
+            A tuple containing the TCP connector and client timeout settings.
+        """
         connector = aiohttp.TCPConnector(
             limit=0,
             limit_per_host=0,
@@ -306,7 +313,17 @@ class MarketSimulator:
     async def _send_order_http(
         self, order: OrderRequest, session: aiohttp.ClientSession | None, api_url: str
     ) -> bool:
-        """Sends a single order to the server via HTTP."""
+        """
+        Sends a single order to the server via HTTP.
+
+        Args:
+            order: The order to send
+            session: The HTTP session to use
+            api_url: The URL of the API to send the order to
+
+        Returns:
+            True if the order was sent successfully, False otherwise.
+        """
         if not session:
             return False
         try:
@@ -329,8 +346,13 @@ class MarketSimulator:
             return False
 
     async def run_with_http(self, api_url: str) -> None:
-        """Runs simulator sending orders via HTTP."""
-        connector, timeout = self._create_http_client()
+        """
+        Runs simulator sending orders via HTTP.
+
+        Args:
+            api_url: The URL of the API to send the order to
+        """
+        connector, timeout = self._set_up_http_client_settings()
 
         async with aiohttp.ClientSession(
             connector=connector,
@@ -350,7 +372,13 @@ class MarketSimulator:
     async def _check_server_health(
         self, api_url: str, session: aiohttp.ClientSession
     ) -> None:
-        """Checks if the server is healthy."""
+        """
+        Checks if the server is healthy.
+
+        Args:
+            api_url: The URL of the API to check the health of
+            session: The HTTP session to use
+        """
         async with session.get(f"{api_url.rstrip('/')}/health") as response:
             if response.status != 200:
                 raise RuntimeError(f"Server health check failed: {response.status}")
