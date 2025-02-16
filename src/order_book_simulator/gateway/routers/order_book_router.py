@@ -59,7 +59,6 @@ async def get_order_book(
     ticker: str, db: AsyncSession = Depends(get_db)
 ) -> dict[str, Any]:
     """Returns the order book for the specified stock."""
-    # Look up stock_id from ticker
     stock = await get_stock_by_ticker(ticker, db)
     if not stock:
         raise HTTPException(
@@ -68,6 +67,8 @@ async def get_order_book(
         )
 
     snapshot = order_book_cache.get_order_book(stock.id)
+    trades = order_book_cache.get_trades(stock.id)
+
     if not snapshot:
         raise HTTPException(
             status_code=404,
@@ -78,4 +79,5 @@ async def get_order_book(
         "ticker": ticker,
         "timestamp": datetime.now(timezone.utc).isoformat(),
         "book": snapshot,
+        "trades": trades,
     }

@@ -33,6 +33,7 @@ class MatchingEngine:
             order_book: The order book for the stock.
             trades: The list of trades that triggered this update.
         """
+        # Current order book state
         market_data = {
             "bids": [
                 {"price": price, "quantity": level.quantity}
@@ -42,11 +43,24 @@ class MatchingEngine:
                 {"price": price, "quantity": level.quantity}
                 for price, level in order_book.asks.items()
             ],
-            "trades": trades,
         }
-        await self.market_data_publisher(stock_id, market_data)
-        # Update Redis cache with latest snapshot
+        
+        # Update order book in Redis
         order_book_cache.set_order_book(stock_id, market_data)
+        
+        # Append new trades to trade history
+        if trades:
+            for trade in trades:
+                if "timestamp" not in trade:
+                    trade["timestamp"] = datetime.now(timezone.utc).isoformat()
+            
+            existing_trades = order_book_cache.get_trades(stock_id)
+            # Ensure trades is a list[dict]
+            updated_trades = existing_trades + [t for t in trades if t is not None]
+            
+            order_book_cache.set_trades(stock_id, updated_trades)
+
+        await self.market_data_publisher(stock_id, {**market_data, "trades": trades})
 
     async def process_order(self, order_message: dict[str, Any]) -> None:
         """

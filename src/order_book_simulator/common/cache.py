@@ -76,6 +76,21 @@ class OrderBookCache:
                 result[stock_id] = json.loads(data)  # type: ignore
         return dict(sorted(result.items()))
 
+    def _get_trades_key(self, stock_id: UUID) -> str:
+        """Gets the Redis key for trade history."""
+        return f"trades:{stock_id}"
+
+    def get_trades(self, stock_id: UUID) -> list[dict]:
+        """Gets trade history for a stock."""
+        key = self._get_trades_key(stock_id)
+        data = self.redis.get(key)
+        return json.loads(data.decode()) if data else []  # type: ignore
+
+    def set_trades(self, stock_id: UUID, trades: list[dict]) -> None:
+        """Stores trade history for a stock."""
+        key = self._get_trades_key(stock_id)
+        self.redis.set(key, json.dumps(trades, default=str))
+
 
 # Global cache instance
 order_book_cache = OrderBookCache()
