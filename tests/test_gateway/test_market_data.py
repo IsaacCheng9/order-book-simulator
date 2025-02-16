@@ -25,7 +25,7 @@ def test_get_active_stocks_with_orders(test_client, matching_engine, event_loop)
         }
         event_loop.run_until_complete(matching_engine.process_order(order))
 
-    response = test_client.get("/market-data/stocks")
+    response = test_client.get("/market-data/stocks-with-orders")
     assert response.status_code == 200
     data = response.json()
     assert "timestamp" in data
@@ -35,7 +35,7 @@ def test_get_active_stocks_with_orders(test_client, matching_engine, event_loop)
 
 def test_get_active_stocks_empty(test_client):
     """Tests getting active stocks when no order books exist."""
-    response = test_client.get("/market-data/stocks")
+    response = test_client.get("/market-data/stocks-with-orders")
     assert response.status_code == 200
     data = response.json()
     assert "timestamp" in data
