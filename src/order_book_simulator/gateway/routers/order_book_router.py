@@ -20,6 +20,15 @@ order_book_router = APIRouter()
 
 @order_book_router.post("", response_model=OrderResponse)
 async def create_order(order_request: OrderRequest, db=Depends(get_db)):
+    """
+    Creates a new order for a stock.
+
+    Args:
+        order_request: The order request to create.
+
+    Returns:
+        Confirmation of the created order including any filled quantity.
+    """
     start_time = datetime.now(timezone.utc)
     if app_state.producer is None:
         raise HTTPException(
@@ -47,7 +56,12 @@ async def create_order(order_request: OrderRequest, db=Depends(get_db)):
 
 @order_book_router.get("/collection")
 async def get_order_books() -> dict[str, Any]:
-    """Returns all order books and their trades in the system."""
+    """
+    Returns all order books and their trades in the system.
+
+    Returns:
+        A dictionary of order books keyed by stock ID.
+    """
     order_books = order_book_cache.get_all_order_books()
 
     # Add trades to each order book
@@ -63,7 +77,16 @@ async def get_order_books() -> dict[str, Any]:
 async def get_order_book(
     ticker: str, db: AsyncSession = Depends(get_db)
 ) -> dict[str, Any]:
-    """Returns the order book for the specified stock."""
+    """
+    Returns the order book for the specified stock.
+
+    Args:
+        ticker: The ticker of the stock to get the order book for.
+        db: The database session.
+
+    Returns:
+        The order book for the specified stock.
+    """
     stock = await get_stock_by_ticker(ticker, db)
     if not stock:
         raise HTTPException(
