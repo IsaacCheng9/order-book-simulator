@@ -2,15 +2,25 @@ from unittest.mock import AsyncMock, MagicMock
 from uuid import UUID, uuid4
 
 import pytest
-from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from starlette.testclient import TestClient
 
 from order_book_simulator.common.cache import order_book_cache
+from order_book_simulator.database.connection import get_db
 from order_book_simulator.database.models import Base
-from order_book_simulator.database.session import get_db, test_engine
 from order_book_simulator.gateway.app import app, app_state
 from order_book_simulator.matching.engine import MatchingEngine
 from order_book_simulator.matching.order_book import OrderBook
+
+# Add test database configuration
+test_engine = create_async_engine(
+    "postgresql+asyncpg://test:test@localhost:5432/test"
+)
+TestingSessionLocal = async_sessionmaker(
+    test_engine,
+    class_=AsyncSession,
+    expire_on_commit=False,
+)
 
 
 class MockMarketDataPublisher:

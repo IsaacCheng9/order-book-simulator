@@ -1,5 +1,6 @@
-from uuid import UUID
 from decimal import Decimal
+from uuid import UUID
+
 from sqlalchemy import DECIMAL, Integer, String, Uuid
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
