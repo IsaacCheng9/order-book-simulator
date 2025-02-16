@@ -1,7 +1,7 @@
 from datetime import datetime, timezone
 from decimal import Decimal
 from typing import Any
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -47,11 +47,16 @@ async def create_order(order_request: OrderRequest, db=Depends(get_db)):
 
 @order_book_router.get("/collection")
 async def get_order_books() -> dict[str, Any]:
-    """Returns all order books in the system."""
-    return {
-        "timestamp": datetime.now(timezone.utc).isoformat(),
-        "order_books": order_book_cache.get_all_order_books(),
-    }
+    """Returns all order books and their trades in the system."""
+    order_books = order_book_cache.get_all_order_books()
+
+    # Add trades to each order book
+    result = {}
+    for stock_id, book in order_books.items():
+        trades = order_book_cache.get_trades(UUID(stock_id))
+        result[stock_id] = {"book": book, "trades": trades}
+
+    return {"timestamp": datetime.now(timezone.utc).isoformat(), "order_books": result}
 
 
 @order_book_router.get("/{ticker}")
