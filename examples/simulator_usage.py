@@ -53,17 +53,18 @@ async def run_simulation() -> None:
     # Extract configuration
     tickers = list(STOCK_CONFIG.keys())
     base_prices = {ticker: cfg["base_price"] for ticker, cfg in STOCK_CONFIG.items()}
-    min_sizes = {ticker: Decimal("1") for ticker in tickers}  # Allow any size
-    max_sizes = {ticker: Decimal("10000") for ticker in tickers}  # Large max
+    min_sizes = {ticker: Decimal("1") for ticker in tickers}
+    max_sizes = {ticker: Decimal("100") for ticker in tickers}
 
     # Create and run simulator
     simulator = MarketSimulator(
+        rate_mode="fixed",
+        initial_orders_per_second=1,
         tickers=tickers,
         base_prices=base_prices,
         min_order_sizes=min_sizes,
         max_order_sizes=max_sizes,
         num_workers=get_optimal_process_count(),
-        queue_size=50000,
     )
 
     await simulator.run_with_http("http://localhost:8000")
