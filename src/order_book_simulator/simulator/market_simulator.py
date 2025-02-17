@@ -46,6 +46,7 @@ class MarketSimulator:
         min_order_sizes: dict[str, Decimal],
         max_order_sizes: dict[str, Decimal],
         initial_orders_per_second: int = 100,
+        rate_mode: str = "variable",
         rate_increase_factor: float = 1.2,
         rate_decrease_factor: float = 0.9,
         rate_adjustment_interval: float = 5.0,
@@ -66,6 +67,7 @@ class MarketSimulator:
             min_order_sizes: Minimum order size for each ticker
             max_order_sizes: Maximum order size for each ticker
             initial_orders_per_second: Starting order rate
+            mode: "fixed" or "variable" rate mode
             rate_increase_factor: Factor to multiply rate by when increasing
             rate_decrease_factor: Factor to multiply rate by when decreasing
             rate_adjustment_interval: Seconds between rate adjustments
@@ -77,6 +79,10 @@ class MarketSimulator:
             rate_decrease_threshold: Achievement ratio that triggers decrease
             num_producers: Number of parallel order producers
         """
+        self.rate_mode = rate_mode.lower()
+        if self.rate_mode not in ["fixed", "variable"]:
+            raise ValueError("Mode must be either 'fixed' or 'variable'")
+
         self.generator = RandomOrderGenerator(
             tickers=tickers,
             base_prices=base_prices,
@@ -153,6 +159,9 @@ class MarketSimulator:
         target rate up or down based on performance. Uses consecutive successes
         or failures to adjust the magnitude of changes.
         """
+        if self.rate_mode == "fixed":
+            return  # Don't adjust rate in fixed mode
+
         while self.running:
             await asyncio.sleep(self.rate_adjustment_interval)
 
