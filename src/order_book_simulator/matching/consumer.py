@@ -6,6 +6,7 @@ from uuid import UUID
 
 from aiokafka import AIOKafkaConsumer, ConsumerRecord
 
+from order_book_simulator.market_data.processor import process_and_persist_market_data
 from order_book_simulator.matching.engine import MatchingEngine
 
 logger = logging.getLogger(__name__)
@@ -142,8 +143,10 @@ async def main():
     """Main entry point for the matching engine consumer."""
 
     # TODO: Use this placeholder market data publisher for now.
-    async def publish_market_data(stock_id: UUID, trade_data: dict) -> None:
-        logger.info(f"Trade executed for {stock_id}: {trade_data}")
+    async def publish_market_data(stock_id: UUID, market_data: dict) -> None:
+        """Publishes market data updates and persists them."""
+        logger.info(f"Trade executed for {stock_id}: {market_data}")
+        await process_and_persist_market_data(stock_id, market_data)
 
     matching_engine = MatchingEngine(market_data_publisher=publish_market_data)
     consumer = OrderConsumer(
