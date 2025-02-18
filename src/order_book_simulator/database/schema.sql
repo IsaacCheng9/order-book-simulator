@@ -60,26 +60,24 @@ CREATE TABLE trade (
     FOREIGN KEY (stock_id) REFERENCES stock(id)
 );
 -- Market Data Snapshot table
-CREATE TABLE market_data_snapshot (
+CREATE TABLE market_snapshot (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     stock_id UUID NOT NULL,
-    open_price NUMERIC(20, 8) NOT NULL,
-    high_price NUMERIC(20, 8) NOT NULL,
-    low_price NUMERIC(20, 8) NOT NULL,
-    close_price NUMERIC(20, 8) NOT NULL,
-    volume NUMERIC(20, 8) NOT NULL,
-    snapshot_time TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    bids JSONB NOT NULL,
+    asks JSONB NOT NULL,
+    timestamp TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (stock_id) REFERENCES stock(id)
 );
 -- Indexes for performance optimization
 CREATE INDEX idx_orders_user_stock ON order_(user_id, stock_id);
 CREATE INDEX idx_trades_stock ON trade(stock_id);
-CREATE INDEX idx_market_data_stock ON market_data_snapshot(stock_id);
+CREATE INDEX idx_market_snapshot_stock_time ON market_snapshot(stock_id, timestamp);
 CREATE INDEX idx_orders_status ON order_(status);
 CREATE INDEX idx_trades_time ON trade(trade_time);
 CREATE INDEX idx_orders_created_at ON order_(created_at);
 CREATE INDEX idx_orders_type_side ON order_(type, side);
-CREATE INDEX idx_orders_price ON order_(price) WHERE type = 'LIMIT';
+CREATE INDEX idx_orders_price ON order_(price)
+WHERE type = 'LIMIT';
 -- Function to automatically update the 'updated_at' timestamp
 CREATE OR REPLACE FUNCTION update_modified_column() RETURNS TRIGGER AS $$ BEGIN NEW.updated_at = CURRENT_TIMESTAMP;
 RETURN NEW;
