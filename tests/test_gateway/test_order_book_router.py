@@ -1,8 +1,7 @@
-from order_book_simulator.common.models import OrderSide, OrderType
-
-
 from datetime import datetime, timezone
 from uuid import uuid4
+
+from order_book_simulator.common.models import OrderSide, OrderType
 
 
 def test_get_all_order_books_with_orders(test_client, matching_engine, event_loop):
