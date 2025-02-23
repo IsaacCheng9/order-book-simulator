@@ -49,3 +49,20 @@ containers, images, and volumes:
 ```bash
 docker compose down -v
 ```
+
+### Running the Market Simulator
+
+The market simulator is a tool that allows you to simulate market activity to
+demonstrate how the order book services work.
+
+You can find the `MarketSimulator` class in
+[src/order_book_simulator/simulator/market_simulator.py](./src/order_book_simulator/simulator/market_simulator.py).
+We've also provided an example script in
+[examples/market_simulator_usage.py](./examples/market_simulator_usage.py) that
+shows how to use the `MarketSimulator` class to simulate market activity.
+
+To run the market simulator, you can use the following command:
+
+```bash
+uv run python examples/market_simulator_usage.py
+```
