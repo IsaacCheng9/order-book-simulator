@@ -46,6 +46,12 @@ app = FastAPI(
 )
 
 # We have separate routers for each of the resources.
-app.include_router(health_router.health_router, prefix="/health", tags=["health"])
-app.include_router(order_book_router.order_book_router, prefix="/order-book", tags=["order-book"])
-app.include_router(market_data_router.market_data_router, prefix="/market-data", tags=["market-data"])
+app.include_router(health_router.health_router, prefix="/v1/health", tags=["health"])
+app.include_router(
+    order_book_router.order_book_router, prefix="/v1/order-book", tags=["order-book"]
+)
+app.include_router(
+    market_data_router.market_data_router,
+    prefix="/v1/market-data",
+    tags=["market-data"],
+)

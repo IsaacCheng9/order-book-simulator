@@ -81,6 +81,8 @@ services:
       dockerfile: docker/Dockerfile.market_data
     depends_on:
       - kafka
+      - redis
+      - postgres
 
   redis:
     image: redis:latest

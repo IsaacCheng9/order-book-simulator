@@ -1,4 +1,5 @@
 from datetime import datetime, timezone
+from decimal import Decimal
 from typing import Any, Awaitable, Callable
 from uuid import UUID
 
@@ -33,20 +34,30 @@ class MatchingEngine:
             order_book: The order book for the stock.
             trades: The list of trades that triggered this update.
         """
-        market_data = {
-            "bids": [
-                {"price": price, "quantity": level.quantity}
-                for price, level in order_book.bids.items()
-            ],
-            "asks": [
-                {"price": price, "quantity": level.quantity}
-                for price, level in order_book.asks.items()
-            ],
-            "trades": trades,
-        }
-        await self.market_data_publisher(stock_id, market_data)
-        # Update Redis cache with latest snapshot
-        order_book_cache.set_order_book(stock_id, market_data)
+        # Get current order book state
+        market_data = order_book.get_full_snapshot()
+
+        # Convert Decimal objects to strings in trades
+        if trades:
+            for trade in trades:
+                if "timestamp" not in trade:
+                    trade["timestamp"] = datetime.now(timezone.utc).isoformat()
+                # Convert Decimal values to strings
+                trade["price"] = str(trade["price"])
+                trade["quantity"] = str(trade["quantity"])
+
+            existing_trades = order_book_cache.get_trades(stock_id)
+            updated_trades = existing_trades + [t for t in trades if t is not None]
+            order_book_cache.set_trades(stock_id, updated_trades)
+
+        # Convert Decimal values in bids/asks to strings if not already done
+        for level in market_data["bids"] + market_data["asks"]:
+            if isinstance(level["price"], Decimal):
+                level["price"] = str(level["price"])
+            if isinstance(level["quantity"], Decimal):
+                level["quantity"] = str(level["quantity"])
+
+        await self.market_data_publisher(stock_id, {**market_data, "trades": trades})
 
     async def process_order(self, order_message: dict[str, Any]) -> None:
         """
@@ -64,5 +75,9 @@ class MatchingEngine:
         # Add timestamp of when the order was processed.
         order_message["created_at"] = datetime.now(timezone.utc)
         trades = order_book.add_order(order_message)
+        
+        # Cache the order book state
+        order_book_cache.set_order_book(stock_id, order_book.get_full_snapshot())
+        
         # Always publish market data updates, even if no trades occurred.
         await self._publish_market_data(stock_id, order_book, trades or [])
