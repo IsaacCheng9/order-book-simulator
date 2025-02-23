@@ -2,10 +2,18 @@ import asyncio
 import json
 import logging
 from datetime import datetime, timezone
+from decimal import Decimal
 from uuid import UUID
 
 from aiokafka import AIOKafkaConsumer, ConsumerRecord
+from redis.asyncio import Redis
 
+from order_book_simulator.database.connection import AsyncSessionLocal
+from order_book_simulator.database.queries import (
+    get_stock_by_id,
+)
+from order_book_simulator.market_data.analytics import MarketDataAnalytics
+from order_book_simulator.market_data.models import OrderBookState, PriceLevel
 from order_book_simulator.market_data.processor import process_and_persist_market_data
 from order_book_simulator.matching.engine import MatchingEngine
 
@@ -141,11 +149,56 @@ class OrderConsumer:
 
 async def main():
     """Main entry point for the matching engine consumer."""
+    # Create analytics instance
+    redis_client = Redis(host="redis", port=6379, decode_responses=True)
+    analytics = MarketDataAnalytics(redis_client)
 
-    # TODO: Use this placeholder market data publisher for now.
     async def publish_market_data(stock_id: UUID, market_data: dict) -> None:
-        """Publishes market data updates and persists them."""
+        """
+        Publishes market data updates and persists them.
+
+        Args:
+            stock_id: The ID of the stock to publish market data for.
+            market_data: The market data to publish.
+        """
         logger.info(f"Trade executed for {stock_id}: {market_data}")
+
+        # Get the specific stock's ticker
+        async with AsyncSessionLocal() as session:
+            stock = await get_stock_by_id(stock_id, session)
+            if not stock:
+                logger.error(f"Could not find stock {stock_id}")
+                return
+
+        # Record state in Redis for analytics
+        state = OrderBookState(
+            stock_id=stock_id,
+            ticker=stock.ticker,
+            bids=[
+                PriceLevel(
+                    price=Decimal(b["price"]),
+                    quantity=Decimal(b["quantity"]),
+                )
+                for b in market_data["bids"]
+            ],
+            asks=[
+                PriceLevel(
+                    price=Decimal(a["price"]),
+                    quantity=Decimal(a["quantity"]),
+                )
+                for a in market_data["asks"]
+            ],
+            last_trade_price=Decimal(market_data["trades"][-1]["price"])
+            if market_data["trades"]
+            else None,
+            last_trade_quantity=Decimal(market_data["trades"][-1]["quantity"])
+            if market_data["trades"]
+            else None,
+            last_update_time=datetime.now(timezone.utc),
+        )
+        await analytics.record_state(state)
+
+        # Persist to PostgreSQL
         await process_and_persist_market_data(stock_id, market_data)
 
     matching_engine = MatchingEngine(market_data_publisher=publish_market_data)

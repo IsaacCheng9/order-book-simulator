@@ -1,4 +1,4 @@
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 from typing import Any, AsyncGenerator, cast
 from uuid import UUID
@@ -85,27 +85,18 @@ class MarketDataAnalytics:
             approximate=True,
         )
 
-    async def get_vwap(
-        self, stock_id: UUID, window: timedelta = timedelta(minutes=1)
-    ) -> Decimal | None:
-        """
-        Calculates Volume Weighted Average Price from Redis Stream data.
+    async def get_vwap(self, stock_id: UUID, window: timedelta) -> Decimal | None:
+        """Gets VWAP for a stock over a time window."""
+        # Calculate start time in milliseconds
+        now = datetime.now(timezone.utc)
+        start_time = int((now - window).timestamp() * 1000)
 
-        Args:
-            stock_id: Unique identifier of the stock
-            window: Time window to calculate VWAP over
+        # Format stream IDs properly for Redis
+        start_id = f"{start_time}-0"
+        end_id = f"{int(now.timestamp() * 1000)}-0"
 
-        Returns:
-            Calculated VWAP as a Decimal, or None if no trades in window
-        """
-        stream_key = self._get_stream_key(stock_id)
-        cutoff = datetime.now() - window
-
-        # Get stream entries within window
         entries = await self.redis.xrange(
-            stream_key,
-            min=cutoff.isoformat(),
-            max="+",
+            self._get_stream_key(stock_id), min=start_id, max=end_id
         )
 
         if not entries:
@@ -134,23 +125,11 @@ class MarketDataAnalytics:
         )
 
     async def get_market_depth(self, stock_id: UUID) -> dict:
-        """
-        Returns latest market depth statistics from Redis Stream.
-
-        Args:
-            stock_id: Unique identifier of the stock
-
-        Returns:
-            Dictionary containing:
-                - bid_depth: Total quantity on bid side
-                - ask_depth: Total quantity on ask side
-                - spread: Current bid-ask spread
-                - mid_price: Current mid price
-        """
+        """Returns latest market depth statistics from Redis Stream."""
         stream_key = self._get_stream_key(stock_id)
 
-        # Get latest entry
-        latest = await self.redis.xrevrange(stream_key, count=1)
+        # Get latest entry using proper Redis stream ID format
+        latest = await self.redis.xrevrange(stream_key, max="+", min="-", count=1)
         if not latest:
             return {}
 
