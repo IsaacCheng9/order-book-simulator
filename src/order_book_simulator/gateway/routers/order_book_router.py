@@ -63,14 +63,17 @@ async def get_order_books() -> dict[str, Any]:
         A dictionary of order books keyed by stock ID.
     """
     order_books = order_book_cache.get_all_order_books()
-
-    # Add trades to each order book
-    result = {}
-    for stock_id, book in order_books.items():
-        trades = order_book_cache.get_trades(UUID(stock_id))
-        result[stock_id] = {"book": book, "trades": trades}
-
-    return {"timestamp": datetime.now(timezone.utc).isoformat(), "order_books": result}
+    return {
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "order_books": {
+            stock_id: {
+                "bids": book["bids"],
+                "asks": book["asks"],
+                "trades": book.get("trades", []),
+            }
+            for stock_id, book in order_books.items()
+        },
+    }
 
 
 @order_book_router.get("/{ticker}")
