@@ -16,9 +16,7 @@ The system consists of three main components:
 - Matching Engine: Processes orders and executes trades
 - Market Data Service: Manages market data dissemination
 
-## Usage
-
-### Installing Dependencies
+## Installing Dependencies
 
 Run the following command from the [project root](./) directory:
 
@@ -26,13 +24,28 @@ Run the following command from the [project root](./) directory:
 uv sync --all-extras --dev
 ```
 
-### Running the Simulator Locally
+## Usage
+
+### Running the Order Book Services
+
+The services handle order processing, matching, and market data dissemination.
+We expose the services via a FastAPI gateway service which enables the user to
+interact with the services via REST API calls.
 
 Use Docker Compose to build and run the services locally:
 
 ```bash
-docker compose -f docker/docker-compose.yml up --build
+docker compose up --build
 ```
 
 From there, you can interact with the FastAPI service at:
 [http://localhost:8000/docs](http://localhost:8000/docs)
+
+### Resetting the Order Book Services
+
+To reset the order book services, you can stop the services and remove the
+containers, images, and volumes:
+
+```bash
+docker compose down -v
+```
