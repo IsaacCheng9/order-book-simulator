@@ -388,7 +388,7 @@ class MarketSimulator:
             api_url: The URL of the API to check the health of
             session: The HTTP session to use
         """
-        async with session.get(f"{api_url.rstrip('/')}/health") as response:
+        async with session.get(f"{api_url.rstrip('/')}/v1/health") as response:
             if response.status != 200:
                 raise RuntimeError(f"Server health check failed: {response.status}")
             logger.info("Server health check passed, starting simulation")
