@@ -25,7 +25,7 @@ def test_get_active_stocks_with_orders(test_client, matching_engine, event_loop)
         }
         event_loop.run_until_complete(matching_engine.process_order(order))
 
-    response = test_client.get("/market-data/stocks-with-orders")
+    response = test_client.get("/v1/market-data/stocks-with-orders")
     assert response.status_code == 200
     data = response.json()
     assert "timestamp" in data
@@ -35,7 +35,7 @@ def test_get_active_stocks_with_orders(test_client, matching_engine, event_loop)
 
 def test_get_active_stocks_empty(test_client):
     """Tests getting active stocks when no order books exist."""
-    response = test_client.get("/market-data/stocks-with-orders")
+    response = test_client.get("/v1/market-data/stocks-with-orders")
     assert response.status_code == 200
     data = response.json()
     assert "timestamp" in data
@@ -60,7 +60,7 @@ def test_get_all_order_books_with_orders(test_client, matching_engine, event_loo
         event_loop.run_until_complete(matching_engine.process_order(order))
 
     # Get all order books
-    response = test_client.get("/order-book/collection")
+    response = test_client.get("v1/order-book/collection")
     assert response.status_code == 200
 
     data = response.json()
@@ -101,7 +101,7 @@ def test_get_order_book_for_stock_empty(test_client, matching_engine, event_loop
     # Process the order to create the order book.
     event_loop.run_until_complete(matching_engine.process_order(order))
     # Get the order book.
-    response = test_client.get(f"/order-book/{stock_id}")
+    response = test_client.get(f"v1/order-book/{stock_id}")
 
     assert response.status_code == 200
     data = response.json()
@@ -118,13 +118,13 @@ def test_get_order_book_for_stock_empty(test_client, matching_engine, event_loop
 def test_get_nonexistent_order_book(test_client):
     """Tests getting an order book that doesn't exist."""
     ticker = "NONEXISTENT"
-    response = test_client.get(f"/order-book/{ticker}")
+    response = test_client.get(f"v1/order-book/{ticker}")
     assert response.status_code == 404
 
 
 def test_get_all_order_books_empty(test_client, matching_engine):
     """Tests getting all order books when none exist."""
-    response = test_client.get("/order-book/collection")
+    response = test_client.get("v1/order-book/collection")
     assert response.status_code == 200
     data = response.json()
     assert "timestamp" in data
