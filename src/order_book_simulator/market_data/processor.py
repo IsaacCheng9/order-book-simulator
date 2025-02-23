@@ -1,3 +1,4 @@
+import asyncio
 import logging
 from typing import Any
 from uuid import UUID
@@ -13,7 +14,9 @@ from order_book_simulator.market_data.persistence import (
 logger = logging.getLogger(__name__)
 
 
-async def process_and_persist_market_data(stock_id: UUID, market_data: dict[str, Any]) -> None:
+async def process_and_persist_market_data(
+    stock_id: UUID, market_data: dict[str, Any]
+) -> None:
     """
     Processes and persists market data updates.
 
@@ -41,3 +44,19 @@ async def process_and_persist_market_data(stock_id: UUID, market_data: dict[str,
     except SQLAlchemyError as e:
         logger.error(f"Failed to persist market data for stock {stock_id}: {e}")
         raise  # Re-raise to ensure the error is handled by the caller
+
+
+async def main() -> None:
+    """Main entry point for the market data service."""
+    logger.info("Starting market data service...")
+    try:
+        # Keep the service running
+        while True:
+            await asyncio.sleep(1)
+    except KeyboardInterrupt:
+        logger.info("Shutting down market data service...")
+
+
+if __name__ == "__main__":
+    logging.basicConfig(level=logging.INFO)
+    asyncio.run(main())
