@@ -7,7 +7,7 @@ from starlette.testclient import TestClient
 
 from order_book_simulator.common.cache import order_book_cache
 from order_book_simulator.database.connection import get_db
-from order_book_simulator.database.models import Base
+from order_book_simulator.database.db_models import Base
 from order_book_simulator.gateway.app import app, app_state
 from order_book_simulator.matching.engine import MatchingEngine
 from order_book_simulator.matching.order_book import OrderBook

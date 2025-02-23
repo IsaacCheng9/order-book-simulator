@@ -2,7 +2,7 @@ from fastapi import HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from order_book_simulator.common.models import OrderRequest, OrderType
-from order_book_simulator.database.models import Stock
+from order_book_simulator.database.db_models import Stock
 from order_book_simulator.database.queries import get_stock_by_ticker
 
 
