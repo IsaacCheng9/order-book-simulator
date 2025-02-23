@@ -86,7 +86,17 @@ class MarketDataAnalytics:
         )
 
     async def get_vwap(self, stock_id: UUID, window: timedelta) -> Decimal | None:
-        """Gets VWAP for a stock over a time window."""
+        """
+        Gets the volume-weighted average price (VWAP) for a stock over a time
+        window.
+
+        Args:
+            stock_id: Unique identifier of the stock
+            window: Time window for the VWAP calculation
+
+        Returns:
+            VWAP for the stock over the time window.
+        """
         # Calculate start time in milliseconds
         now = datetime.now(timezone.utc)
         start_time = int((now - window).timestamp() * 1000)
@@ -125,7 +135,15 @@ class MarketDataAnalytics:
         )
 
     async def get_market_depth(self, stock_id: UUID) -> dict:
-        """Returns latest market depth statistics from Redis Stream."""
+        """
+        Returns latest market depth statistics from Redis Stream.
+
+        Args:
+            stock_id: Unique identifier of the stock
+
+        Returns:
+            Dictionary containing the market depth statistics.
+        """
         stream_key = self._get_stream_key(stock_id)
 
         # Get latest entry using proper Redis stream ID format
