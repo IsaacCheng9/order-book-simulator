@@ -1,10 +1,10 @@
 from datetime import datetime, timedelta
 from decimal import Decimal
-from typing import Any, AsyncGenerator, Generator, cast
+from typing import Any, AsyncGenerator, cast
 from uuid import UUID
 
 import polars as pl
-from redis import Redis
+from redis.asyncio import Redis
 from redis.typing import EncodableT, FieldT
 
 from order_book_simulator.market_data.models import OrderBookState
@@ -23,15 +23,15 @@ class MarketDataAnalytics:
         _window_size: Number of entries to maintain in each stream
     """
 
-    def __init__(self, redis_client: Redis):
+    def __init__(self, redis_client: Redis) -> None:
         """
-        Initialises the analytics engine.
+        Creates a new analytics instance.
 
         Args:
-            redis_client: Redis client instance for stream operations
+            redis_client: Redis client for storing analytics data
         """
         self.redis = redis_client
-        self._window_size = 1000  # Configurable window size
+        self._window_size = 1000  # Keep last 1000 entries
 
     def _get_stream_key(self, stock_id: UUID) -> str:
         """
@@ -43,9 +43,9 @@ class MarketDataAnalytics:
         Returns:
             Redis key string for the stock's market data stream
         """
-        return f"market_data_stream:{stock_id}"
+        return f"market_data:{stock_id}"
 
-    def record_state(self, state: OrderBookState) -> None:
+    async def record_state(self, state: OrderBookState) -> None:
         """
         Records an order book state to Redis Stream for real-time analysis.
 
@@ -78,7 +78,7 @@ class MarketDataAnalytics:
 
         # Add to Redis Stream
         stream_key = self._get_stream_key(state.stock_id)
-        self.redis.xadd(
+        await self.redis.xadd(
             stream_key,
             cast(dict[FieldT, EncodableT], market_data),
             maxlen=self._window_size,  # Keep last N entries
