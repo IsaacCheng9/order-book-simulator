@@ -10,7 +10,8 @@ class PriceLevel:
 
     price: Decimal
     quantity: Decimal
-    order_count: int
+    # TODO: Count the numbers of orders at this price level.
+    # order_count: int
 
 
 @dataclass
