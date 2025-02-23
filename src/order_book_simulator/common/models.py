@@ -1,3 +1,4 @@
+from dataclasses import dataclass
 from datetime import datetime
 from decimal import Decimal
 from enum import Enum
@@ -59,3 +60,26 @@ class Stock(BaseModel):
     min_order_size: Decimal
     max_order_size: Decimal
     price_precision: int
+
+
+@dataclass
+class PriceLevel:
+    """Represents a price level in the order book with its aggregated quantity."""
+
+    price: Decimal
+    # TODO: Count the numbers of orders at this price level.
+    # order_count: int
+    quantity: Decimal
+
+
+@dataclass
+class OrderBookState:
+    """Represents the current state of the order book."""
+
+    stock_id: UUID
+    ticker: str
+    bids: list[PriceLevel]  # Sorted by price descending
+    asks: list[PriceLevel]  # Sorted by price ascending
+    last_trade_price: Decimal | None
+    last_trade_quantity: Decimal | None
+    last_update_time: datetime

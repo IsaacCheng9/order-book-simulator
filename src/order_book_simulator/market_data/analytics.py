@@ -7,7 +7,7 @@ import polars as pl
 from redis.asyncio import Redis
 from redis.typing import EncodableT, FieldT
 
-from order_book_simulator.market_data.models import OrderBookState
+from order_book_simulator.common.models import OrderBookState
 
 
 class MarketDataAnalytics:

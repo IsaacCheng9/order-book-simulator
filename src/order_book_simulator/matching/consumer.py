@@ -8,12 +8,12 @@ from uuid import UUID
 from aiokafka import AIOKafkaConsumer, ConsumerRecord
 from redis.asyncio import Redis
 
+from order_book_simulator.common.models import OrderBookState, PriceLevel
 from order_book_simulator.database.connection import AsyncSessionLocal
 from order_book_simulator.database.queries import (
     get_stock_by_id,
 )
 from order_book_simulator.market_data.analytics import MarketDataAnalytics
-from order_book_simulator.market_data.models import OrderBookState, PriceLevel
 from order_book_simulator.market_data.processor import process_and_persist_market_data
 from order_book_simulator.matching.engine import MatchingEngine
 
