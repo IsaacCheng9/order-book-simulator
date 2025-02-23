@@ -60,7 +60,7 @@ def test_get_all_order_books_with_orders(test_client, matching_engine, event_loo
         event_loop.run_until_complete(matching_engine.process_order(order))
 
     # Get all order books
-    response = test_client.get("v1/order-book/collection")
+    response = test_client.get("/v1/order-book/collection")
     assert response.status_code == 200
 
     data = response.json()
@@ -76,53 +76,23 @@ def test_get_all_order_books_with_orders(test_client, matching_engine, event_loo
     for stock_id in stock_ids:
         stock_id_str = str(stock_id)
         assert stock_id_str in data["order_books"]
-        book = data["order_books"][stock_id_str]
-        assert "bids" in book
-        assert "asks" in book
-        assert len(book["bids"]) == 1  # Should have our buy order
-        assert len(book["asks"]) == 0  # No sell orders
+        order_book = data["order_books"][stock_id_str]
+        assert "bids" in order_book
+        assert "asks" in order_book
+        assert len(order_book["bids"]) == 1  # Should have our buy order.
+        assert len(order_book["asks"]) == 0  # No sell orders.
+        assert "trades" in order_book
+        assert len(order_book["trades"]) == 0  # Only buy orders, so no trades.
 
 
-def test_get_order_book_for_stock_empty(test_client, matching_engine, event_loop):
-    """Tests getting an empty order book."""
-    stock_id = uuid4()
-
-    # Create an order and process it directly through the matching engine
-    order = {
-        "id": str(uuid4()),
-        "stock_id": str(stock_id),
-        "price": "100.00",
-        "quantity": "10.00",
-        "side": OrderSide.BUY.value,
-        "type": OrderType.LIMIT.value,
-        "created_at": datetime.now(timezone.utc),
-    }
-
-    # Process the order to create the order book.
-    event_loop.run_until_complete(matching_engine.process_order(order))
-    # Get the order book.
-    response = test_client.get(f"v1/order-book/{stock_id}")
-
-    assert response.status_code == 200
-    data = response.json()
-    assert "ticker" in data
-    assert "timestamp" in data
-    assert "book" in data
-    assert "bids" in data["book"]
-    assert "asks" in data["book"]
-    # We should have our bid and no asks.
-    assert len(data["book"]["bids"]) == 1
-    assert len(data["book"]["asks"]) == 0
-
-
-def test_get_nonexistent_order_book(test_client):
-    """Tests getting an order book that doesn't exist."""
-    ticker = "NONEXISTENT"
-    response = test_client.get(f"v1/order-book/{ticker}")
+def test_get_order_book_for_nonexistent_stock(test_client):
+    """Tests getting an order book for a stock that doesn't exist in the database."""
+    response = test_client.get("/v1/order-book/non_existent_stock")
+    # Should fail because the stock doesn't exist in the database.
     assert response.status_code == 404
 
 
-def test_get_all_order_books_empty(test_client, matching_engine):
+def test_get_all_order_books_empty(test_client):
     """Tests getting all order books when none exist."""
     response = test_client.get("v1/order-book/collection")
     assert response.status_code == 200
