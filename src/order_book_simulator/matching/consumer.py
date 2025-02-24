@@ -178,6 +178,7 @@ async def main():
                 PriceLevel(
                     price=Decimal(b["price"]),
                     quantity=Decimal(b["quantity"]),
+                    order_count=b.get("order_count", 0),
                 )
                 for b in market_data["bids"]
             ],
@@ -185,6 +186,7 @@ async def main():
                 PriceLevel(
                     price=Decimal(a["price"]),
                     quantity=Decimal(a["quantity"]),
+                    order_count=a.get("order_count", 0),
                 )
                 for a in market_data["asks"]
             ],
