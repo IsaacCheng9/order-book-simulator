@@ -67,9 +67,8 @@ class PriceLevel:
     """Represents a price level in the order book with its aggregated quantity."""
 
     price: Decimal
-    # TODO: Count the numbers of orders at this price level.
-    # order_count: int
     quantity: Decimal
+    order_count: int = 0  # Count of orders at this price level
 
 
 @dataclass

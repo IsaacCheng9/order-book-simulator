@@ -3,18 +3,7 @@ from decimal import Decimal
 from typing import Any
 from uuid import UUID
 
-from order_book_simulator.common.models import OrderSide, OrderType
-
-
-@dataclass
-class AggregatedLevel:
-    """
-    Represents an aggregated price level in the order book with total volume.
-    """
-
-    price: Decimal
-    quantity: Decimal
-    order_count: int
+from order_book_simulator.common.models import OrderSide, OrderType, PriceLevel
 
 
 @dataclass
@@ -38,8 +27,8 @@ class OrderBook:
 
     def __init__(self, stock_id: UUID):
         self.stock_id = stock_id
-        self.bids: dict[Decimal, AggregatedLevel] = {}
-        self.asks: dict[Decimal, AggregatedLevel] = {}
+        self.bids: dict[Decimal, PriceLevel] = {}
+        self.asks: dict[Decimal, PriceLevel] = {}
         self._bid_orders: list[OrderBookEntry] = []
         self._ask_orders: list[OrderBookEntry] = []
 
@@ -47,7 +36,7 @@ class OrderBook:
         self,
         incoming_order: dict[str, Any],
         resting_orders: list[OrderBookEntry],
-        aggregated_levels: dict[Decimal, AggregatedLevel],
+        aggregated_levels: dict[Decimal, PriceLevel],
         is_buy: bool,
     ) -> tuple[list[dict], Decimal]:
         """
@@ -115,6 +104,8 @@ class OrderBook:
                 resting_order.quantity -= match_quantity
                 if resting_order.quantity == 0:
                     resting_orders.remove(resting_order)
+                    # Reduce the order count by 1, and remove it if there are
+                    # no orders left at this price.
                     aggregated_level.order_count -= 1
                     if aggregated_level.quantity == 0:
                         del aggregated_levels[resting_order.price]
@@ -208,7 +199,7 @@ class OrderBook:
                 aggregated_level.quantity += remaining_quantity
                 aggregated_level.order_count += 1
             else:
-                aggregated_levels[price] = AggregatedLevel(
+                aggregated_levels[price] = PriceLevel(
                     price=price,
                     quantity=remaining_quantity,
                     order_count=1,
@@ -229,8 +220,12 @@ class OrderBook:
         """
         return {
             "bids": [
-                {"price": str(price), "quantity": str(level.quantity)}
-                # Sort bids form high to low.
+                {
+                    "price": str(price),
+                    "quantity": str(level.quantity),
+                    "order_count": level.order_count,
+                }
+                # Sort bids from high to low.
                 for price, level in sorted(
                     self.bids.items(),
                     key=lambda x: x[0],
@@ -238,7 +233,11 @@ class OrderBook:
                 )
             ],
             "asks": [
-                {"price": str(price), "quantity": str(level.quantity)}
+                {
+                    "price": str(price),
+                    "quantity": str(level.quantity),
+                    "order_count": level.order_count,
+                }
                 # Sort asks from low to high.
                 for price, level in sorted(
                     self.asks.items(),
