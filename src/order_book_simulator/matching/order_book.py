@@ -1,25 +1,15 @@
-from dataclasses import dataclass
 from decimal import Decimal
 from typing import Any
 from uuid import UUID
 
-from order_book_simulator.common.models import OrderSide, OrderType, PriceLevel
+from order_book_simulator.common.models import (
+    OrderBookEntry,
+    OrderSide,
+    OrderType,
+    PriceLevel,
+)
 
 
-@dataclass
-class OrderBookEntry:
-    """
-    Represents an individual order in the order book.
-    """
-
-    id: UUID
-    price: Decimal
-    quantity: Decimal
-    # The time the order was added to the book in microseconds.
-    entry_time: int
-
-
-@dataclass
 class OrderBook:
     """
     Manages the limit order book for a single stock.

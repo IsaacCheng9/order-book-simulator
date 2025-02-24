@@ -82,3 +82,16 @@ class OrderBookState:
     last_trade_price: Decimal | None
     last_trade_quantity: Decimal | None
     last_update_time: datetime
+
+
+@dataclass
+class OrderBookEntry:
+    """
+    Represents an individual order in the order book.
+    """
+
+    id: UUID
+    price: Decimal
+    quantity: Decimal
+    # The time the order was added to the book in microseconds.
+    entry_time: int
