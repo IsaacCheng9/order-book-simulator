@@ -10,11 +10,25 @@ updates in real-time.
 
 ## Components
 
-The system consists of three main components:
+The system consists of four main services:
 
-- Gateway Service: Handles incoming orders and API interactions
-- Matching Engine: Processes orders and executes trades
-- Market Data Service: Manages market data dissemination
+- **Gateway Service**: REST API service that handles incoming orders and market
+  data requests
+- **Matching Engine**: Processes orders and executes trades using price-time
+  priority
+- **Market Data Service**: Manages market data dissemination and analytics
+- **Database**: Stores order and trade history
+
+## Technology Stack
+
+- **FastAPI**: REST API framework for the gateway service
+- **Polars**: Data processing and analysis
+- **SQLAlchemy**: ORM for the database
+- **Pydantic**: Data modelling and validation
+- **Kafka**: Message broker for order flow and market data
+- **PostgreSQL**: Persistent storage for orders and trades
+- **Redis**: Caching for real-time market data
+- **Docker**: Containerisation and deployment
 
 ## Installing Dependencies
 
