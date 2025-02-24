@@ -10,6 +10,12 @@ updates in real-time.
 
 ## Components
 
+### Order Book Services
+
+The order book services handle order processing, matching, and market data
+dissemination. We expose the services via a FastAPI gateway service which
+enables the user to interact with the services via REST API calls.
+
 The system consists of four main services:
 
 - **Gateway Service**: REST API service that handles incoming orders and market
@@ -18,6 +24,18 @@ The system consists of four main services:
   priority
 - **Market Data Service**: Manages market data dissemination and analytics
 - **Database**: Stores order and trade history
+
+### Market Simulator
+
+The market simulator is a tool that allows you to simulate market activity to
+demonstrate how the order book services work. We use the simulator to generate
+orders for the order book services to process.
+
+You can find the `MarketSimulator` class in
+[src/order_book_simulator/simulator/market_simulator.py](./src/order_book_simulator/simulator/market_simulator.py).
+We've also provided an example script in
+[examples/market_simulator_usage.py](./examples/market_simulator_usage.py) that
+shows how to use the `MarketSimulator` class to simulate market activity.
 
 ## Technology Stack
 
@@ -42,10 +60,6 @@ uv sync --all-extras --dev
 
 ### Running the Order Book Services
 
-The services handle order processing, matching, and market data dissemination.
-We expose the services via a FastAPI gateway service which enables the user to
-interact with the services via REST API calls.
-
 Use Docker Compose to build and run the services locally:
 
 ```bash
@@ -64,16 +78,7 @@ containers, images, and volumes:
 docker compose down -v
 ```
 
-### Running the Market Simulator
-
-The market simulator is a tool that allows you to simulate market activity to
-demonstrate how the order book services work.
-
-You can find the `MarketSimulator` class in
-[src/order_book_simulator/simulator/market_simulator.py](./src/order_book_simulator/simulator/market_simulator.py).
-We've also provided an example script in
-[examples/market_simulator_usage.py](./examples/market_simulator_usage.py) that
-shows how to use the `MarketSimulator` class to simulate market activity.
+### Running the Market Simulator Example
 
 To run the market simulator, you can use the following command:
 
