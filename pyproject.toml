@@ -21,6 +21,7 @@ dependencies = [
     "streamlit>=1.46.1",
     "uvicorn>=0.34.0",
     "uvloop>=0.21.0",
+    "watchdog>=6.0.0",
 ]
 
 [project.scripts]
