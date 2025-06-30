@@ -3,6 +3,9 @@ from datetime import datetime
 import pandas as pd
 import requests
 import streamlit as st
+from order_book_simulator.database.queries import (
+    get_tickers_by_ids,
+)
 
 
 def check_gateway_connection() -> bool:
@@ -50,6 +53,84 @@ def get_order_book_data(ticker: str) -> dict | None:
         return None
 
 
+def get_all_order_books() -> dict | None:
+    """
+    Fetches all order book data from the collections endpoint.
+
+    Returns:
+        Dictionary containing all order books or None if unavailable
+    """
+    try:
+        response = requests.get(
+            "http://gateway:8000/v1/order-book/collection", timeout=5
+        )
+        if response.status_code == 200:
+            return response.json()
+        else:
+            st.error(f"Failed to fetch order book collection: {response.status_code}")
+            return None
+    except Exception as e:
+        st.error(f"Error fetching order book collection: {e}")
+        return None
+
+
+def create_market_overview() -> None:
+    """
+    Creates a market overview table showing best bid/ask for all stocks.
+    """
+    st.subheader("Market Overview")
+
+    # Get all order books
+    all_order_books = get_all_order_books()
+
+    if not all_order_books or not all_order_books.get("order_books"):
+        st.info("No order book data available")
+        return
+
+    # Create market overview data
+    overview_data = []
+
+    for stock_id, book_data in all_order_books["order_books"].items():
+        bids = book_data.get("bids", [])
+        asks = book_data.get("asks", [])
+
+        # Get best bid (highest price) and best ask (lowest price)
+        best_bid = max(bids, key=lambda x: float(x["price"])) if bids else None
+        best_ask = min(asks, key=lambda x: float(x["price"])) if asks else None
+
+        # Calculate spread
+        spread = None
+        spread_pct = None
+        if best_bid and best_ask:
+            bid_price = float(best_bid["price"])
+            ask_price = float(best_ask["price"])
+            spread = ask_price - bid_price
+            spread_pct = (spread / bid_price) * 100 if bid_price > 0 else 0
+
+        overview_data.append(
+            {
+                # TODO: Get the ticker from the stock ID
+                "Stock ID": stock_id[:8] + "...",
+                "Best Bid ($)": f"{float(best_bid['price']):.2f}" if best_bid else "-",
+                "Best Ask ($)": f"{float(best_ask['price']):.2f}" if best_ask else "-",
+                "Spread ($)": f"${spread:.2f}" if spread else "-",
+                "Spread (%)": f"{spread_pct:.2f}%" if spread_pct else "-",
+                "Bid Size": int(float(best_bid["quantity"])) if best_bid else 0,
+                "Ask Size": int(float(best_ask["quantity"])) if best_ask else 0,
+            }
+        )
+
+    if overview_data:
+        df = pd.DataFrame(overview_data)
+        st.dataframe(df, use_container_width=True)
+
+        # Show last update time
+        if all_order_books.get("timestamp"):
+            st.caption(f"Last updated: {all_order_books['timestamp']}")
+    else:
+        st.info("No active order books found")
+
+
 def main():
     """
     Orchestrates the Streamlit app flow.
@@ -63,7 +144,8 @@ def main():
     # Main header
     st.title("Order Book Simulator")
     st.text(
-        "This is the dashboard for the Order Book Simulator, providing a visual representation of the various components of the system."
+        "This is the dashboard for the Order Book Simulator, providing a visual "
+        "representation of the various components of the system."
     )
 
     # Sidebar for controls
@@ -76,17 +158,31 @@ def main():
     else:
         st.sidebar.error("❌ Gateway Disconnected")
 
-    # Stock selection
-    ticker = st.sidebar.selectbox(
-        "Select Stock",
-        ["AAPL", "MSFT", "GOOGL", "AMZN", "META", "NVDA", "TSLA"],
+    # View mode selection - defaults to market overview
+    view_mode = st.sidebar.radio(
+        "View Mode",
+        [
+            "Market Overview",
+            "Single Stock",
+        ],
     )
+
+    # Stock selection (only shown for single stock view)
+    ticker = None
+    if view_mode == "Single Stock":
+        ticker = st.sidebar.selectbox(
+            "Select Stock",
+            ["AAPL", "MSFT", "GOOGL", "AMZN", "META", "NVDA", "TSLA"],
+        )
 
     # Last update time
     st.sidebar.info(f"Last Updated: {datetime.now().strftime('%H:%M:%S')}")
 
-    # Main content area - Order book display
-    if ticker:
+    # TODO: Refactor this to use a more modular approach.
+    # Main content area - conditional on view mode
+    if view_mode == "Market Overview":
+        create_market_overview()
+    elif view_mode == "Single Stock" and ticker:
         st.subheader(f"Order Book for {ticker}")
 
         # Fetch real order book data
@@ -104,7 +200,7 @@ def main():
                     # Convert to DataFrame for better display
                     bids_df = pd.DataFrame(book["bids"]).rename(
                         columns={
-                            "price": "Price",
+                            "price": "Price ($)",
                             "quantity": "Quantity",
                             "order_count": "Order Count",
                         }
@@ -118,7 +214,7 @@ def main():
                 if book.get("asks"):
                     asks_df = pd.DataFrame(book["asks"]).rename(
                         columns={
-                            "price": "Price",
+                            "price": "Price ($)",
                             "quantity": "Quantity",
                             "order_count": "Order Count",
                         }
