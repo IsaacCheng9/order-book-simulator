@@ -54,7 +54,15 @@ def main():
     if view_mode == "Single Stock":
         ticker = st.sidebar.selectbox(
             "Select Stock",
-            ["AAPL", "MSFT", "GOOGL", "AMZN", "META", "NVDA", "TSLA"],
+            [
+                "AAPL",
+                "AMZN",
+                "GOOGL",
+                "META",
+                "MSFT",
+                "NVDA",
+                "TSLA",
+            ],
         )
 
     # Auto-refresh controls
