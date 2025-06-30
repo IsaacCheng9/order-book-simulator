@@ -1,5 +1,10 @@
+import os
+
 import requests
 import streamlit as st
+
+# Get gateway URL from environment variable
+GATEWAY_URL = os.getenv("GATEWAY_URL", "http://gateway:8000")
 
 
 def check_gateway_connection() -> bool:
@@ -10,7 +15,7 @@ def check_gateway_connection() -> bool:
         True if the connection is successful, otherwise False.
     """
     try:
-        response = requests.get("http://gateway:8000/v1/health", timeout=2)
+        response = requests.get(f"{GATEWAY_URL}/v1/health", timeout=2)
         return response.status_code == 200
     except Exception as e:
         st.error(f"Error checking gateway connection: {e}")
@@ -28,9 +33,7 @@ def get_order_book_data(ticker: str) -> dict | None:
         Order book data or None if unavailable
     """
     try:
-        response = requests.get(
-            f"http://gateway:8000/v1/order-book/{ticker}", timeout=5
-        )
+        response = requests.get(f"{GATEWAY_URL}/v1/order-book/{ticker}", timeout=5)
         if response.status_code == 200:
             return response.json()
         elif response.status_code == 404:
@@ -52,9 +55,7 @@ def get_all_order_books() -> dict | None:
         Dictionary containing all order books or None if unavailable
     """
     try:
-        response = requests.get(
-            "http://gateway:8000/v1/order-book/collection", timeout=5
-        )
+        response = requests.get(f"{GATEWAY_URL}/v1/order-book/collection", timeout=5)
         if response.status_code == 200:
             return response.json()
         else:
@@ -74,7 +75,7 @@ def get_active_stock_tickers() -> dict | None:
     """
     try:
         response = requests.get(
-            "http://gateway:8000/v1/market-data/stocks-with-orders", timeout=5
+            f"{GATEWAY_URL}/v1/market-data/stocks-with-orders", timeout=5
         )
         if response.status_code == 200:
             return response.json()
