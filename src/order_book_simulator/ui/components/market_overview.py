@@ -1,3 +1,5 @@
+from typing import Callable
+
 import pandas as pd
 import streamlit as st
 
@@ -80,3 +82,23 @@ def create_market_overview() -> None:
             st.caption(f"Last Updated: {formatted_time}")
     else:
         st.info("No active order books found")
+
+
+def create_auto_refresh_market_overview(interval: int) -> Callable:
+    """
+    Creates an auto-refreshing market overview fragment with configurable
+    interval.
+
+    Args:
+        interval: The interval in seconds at which to refresh the market
+                  overview.
+
+    Returns:
+        The auto-refreshing market overview Streamlit fragment.
+    """
+
+    @st.fragment(run_every=interval)
+    def auto_refresh_market_overview():
+        create_market_overview()
+
+    return auto_refresh_market_overview

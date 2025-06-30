@@ -1,3 +1,5 @@
+from typing import Callable
+
 import pandas as pd
 import streamlit as st
 
@@ -58,3 +60,21 @@ def display_single_stock_order_book(ticker: str) -> None:
             st.caption(f"Last Updated: {formatted_time}")
     else:
         st.info(f"No order book data available for {ticker}")
+
+
+def create_auto_refresh_order_book(interval: int) -> Callable:
+    """
+    Creates an auto-refreshing order book fragment with configurable interval.
+
+    Args:
+        interval: The interval in seconds at which to refresh the order book.
+
+    Returns:
+        The auto-refreshing order book Streamlit fragment.
+    """
+
+    @st.fragment(run_every=interval)
+    def auto_refresh_order_book(ticker: str):
+        display_single_stock_order_book(ticker)
+
+    return auto_refresh_order_book
