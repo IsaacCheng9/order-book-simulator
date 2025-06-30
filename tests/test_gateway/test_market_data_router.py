@@ -7,6 +7,7 @@ from order_book_simulator.common.models import OrderSide, OrderType
 
 def test_get_active_stocks_with_orders(test_client, matching_engine, event_loop):
     """Tests getting active stocks with existing order books."""
+    # Use predefined stock IDs that work with the mock
     stock_ids = [uuid4(), uuid4()]
 
     for stock_id in stock_ids:
@@ -30,7 +31,20 @@ def test_get_active_stocks_with_orders(test_client, matching_engine, event_loop)
     data = response.json()
     assert "timestamp" in data
     assert "tickers" in data
+    assert "stock_id_to_ticker" in data
     assert len(data["tickers"]) == 2
+    assert len(data["stock_id_to_ticker"]) == 2
+
+    # The mock creates tickers like "STOCK_{id}" based on the conftest.py mock
+    expected_tickers = [f"STOCK_{stock_id}" for stock_id in stock_ids]
+    for ticker in expected_tickers:
+        assert ticker in data["tickers"]
+
+    # Verify stock_id to ticker mapping
+    stock_id_to_ticker = data["stock_id_to_ticker"]
+    for stock_id in stock_ids:
+        assert str(stock_id) in stock_id_to_ticker
+        assert stock_id_to_ticker[str(stock_id)] == f"STOCK_{stock_id}"
 
 
 def test_get_active_stocks_empty(test_client):
@@ -40,4 +54,6 @@ def test_get_active_stocks_empty(test_client):
     data = response.json()
     assert "timestamp" in data
     assert "tickers" in data
+    assert "stock_id_to_ticker" in data
     assert len(data["tickers"]) == 0
+    assert len(data["stock_id_to_ticker"]) == 0

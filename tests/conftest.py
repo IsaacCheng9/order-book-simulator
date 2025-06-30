@@ -13,9 +13,7 @@ from order_book_simulator.matching.engine import MatchingEngine
 from order_book_simulator.matching.order_book import OrderBook
 
 # Add test database configuration
-test_engine = create_async_engine(
-    "postgresql+asyncpg://test:test@localhost:5432/test"
-)
+test_engine = create_async_engine("postgresql+asyncpg://test:test@localhost:5432/test")
 TestingSessionLocal = async_sessionmaker(
     test_engine,
     class_=AsyncSession,
@@ -86,6 +84,15 @@ def db_session() -> AsyncSession:
             if hasattr(compiled.params, "get"):
                 stock_ids = compiled.params.get("id_1", [])
                 mock_rows = [(f"STOCK_{id}",) for id in stock_ids]
+                result.__iter__.return_value = iter(mock_rows)
+                return result
+
+        # Handle get_stock_id_ticker_mapping query (returns id, ticker pairs)
+        if "SELECT stock.id, stock.ticker" in query_str and hasattr(query, "compile"):
+            compiled = query.compile()
+            if hasattr(compiled.params, "get"):
+                stock_ids = compiled.params.get("id_1", [])
+                mock_rows = [(id, f"STOCK_{id}") for id in stock_ids]
                 result.__iter__.return_value = iter(mock_rows)
                 return result
 
