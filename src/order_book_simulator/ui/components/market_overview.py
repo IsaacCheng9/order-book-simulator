@@ -57,8 +57,8 @@ def create_market_overview() -> None:
                 "Ticker": display_name,
                 "Best Bid ($)": f"{float(best_bid['price']):.2f}" if best_bid else "-",
                 "Best Ask ($)": f"{float(best_ask['price']):.2f}" if best_ask else "-",
-                "Spread ($)": f"${spread:.2f}" if spread else "-",
-                "Spread (%)": f"{spread_pct:.2f}%" if spread_pct else "-",
+                "Spread ($)": f"${spread:.2f}" if spread is not None else "-",
+                "Spread (%)": f"{spread_pct:.2f}%" if spread_pct is not None else "-",
                 "Bid Size": int(float(best_bid["quantity"])) if best_bid else 0,
                 "Ask Size": int(float(best_ask["quantity"])) if best_ask else 0,
             }
