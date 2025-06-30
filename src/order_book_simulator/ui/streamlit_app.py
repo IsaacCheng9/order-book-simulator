@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timezone
 
 import streamlit as st
 
@@ -75,7 +75,9 @@ def main():
     st.session_state.auto_refresh_enabled = auto_refresh_enabled
 
     # Last update time
-    st.sidebar.info(f"Last Updated: {datetime.now().strftime('%H:%M:%S UTC')}")
+    st.sidebar.info(
+        f"Last Updated: {datetime.now(timezone.utc).strftime('%H:%M:%S')} UTC"
+    )
 
     # Main content area - conditional on view mode with auto-refresh
     if view_mode == "Market Overview":
