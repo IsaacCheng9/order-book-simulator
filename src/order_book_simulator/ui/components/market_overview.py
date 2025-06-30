@@ -24,18 +24,10 @@ def create_market_overview() -> None:
         st.info("No order book data available")
         return
 
-    # Create a mapping from stock ID to ticker if available
+    # Use the stock_id -> ticker mapping from the API
     stock_id_to_ticker = {}
-    if stock_tickers_data and stock_tickers_data.get("tickers"):
-        # TODO: Enhance the API to return a direct stock_id -> ticker mapping
-        tickers = stock_tickers_data["tickers"]
-        stock_ids = list(all_order_books["order_books"].keys())
-
-        # Simple heuristic: if we have the same number of tickers and stock
-        # IDs, we can try to match them alphabetically for better performance
-        if len(tickers) == len(stock_ids):
-            for ticker, stock_id in zip(sorted(tickers), sorted(stock_ids)):
-                stock_id_to_ticker[stock_id] = ticker
+    if stock_tickers_data and stock_tickers_data.get("stock_id_to_ticker"):
+        stock_id_to_ticker = stock_tickers_data["stock_id_to_ticker"]
 
     # Create market overview data
     overview_data = []
