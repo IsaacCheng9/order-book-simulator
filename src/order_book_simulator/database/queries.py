@@ -50,3 +50,21 @@ async def get_stock_by_id(stock_id: UUID, db: AsyncSession) -> Stock | None:
     """
     result = await db.execute(select(Stock).where(Stock.id == stock_id))
     return result.scalar_one_or_none()
+
+
+async def get_stock_id_ticker_mapping(
+    stock_ids: list[UUID], db: AsyncSession
+) -> dict[str, str]:
+    """
+    Gets a mapping of stock IDs to ticker symbols.
+
+    Args:
+        stock_ids: The list of stock IDs to get tickers for.
+        db: The database session.
+
+    Returns:
+        A dictionary mapping stock ID strings to ticker symbols.
+    """
+    query = select(Stock.id, Stock.ticker).where(Stock.id.in_(stock_ids))
+    result = await db.execute(query)
+    return {str(row[0]): row[1] for row in result}
