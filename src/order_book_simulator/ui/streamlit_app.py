@@ -231,7 +231,7 @@ def main():
         )
 
     # Last update time
-    st.sidebar.info(f"Last Updated: {datetime.now().strftime('%H:%M:%S')}")
+    st.sidebar.info(f"Last Updated: {datetime.now().strftime('%H:%M:%S UTC')}")
 
     # TODO: Refactor this to use a more modular approach.
     # Main content area - conditional on view mode
