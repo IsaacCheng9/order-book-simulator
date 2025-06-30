@@ -3,9 +3,6 @@ from datetime import datetime
 import pandas as pd
 import requests
 import streamlit as st
-from order_book_simulator.database.queries import (
-    get_tickers_by_ids,
-)
 
 
 def check_gateway_connection() -> bool:
@@ -74,18 +71,53 @@ def get_all_order_books() -> dict | None:
         return None
 
 
+def get_active_stock_tickers() -> dict | None:
+    """
+    Fetches active stock tickers from the market data endpoint.
+
+    Returns:
+        Dictionary containing active stock tickers or None if unavailable
+    """
+    try:
+        response = requests.get(
+            "http://gateway:8000/v1/market-data/stocks-with-orders", timeout=5
+        )
+        if response.status_code == 200:
+            return response.json()
+        else:
+            st.error(f"Failed to fetch stock tickers: {response.status_code}")
+            return None
+    except Exception as e:
+        st.error(f"Error fetching stock tickers: {e}")
+        return None
+
+
 def create_market_overview() -> None:
     """
     Creates a market overview table showing best bid/ask for all stocks.
     """
     st.subheader("Market Overview")
 
-    # Get all order books
+    # Get all order books and stock tickers
     all_order_books = get_all_order_books()
+    stock_tickers_data = get_active_stock_tickers()
 
     if not all_order_books or not all_order_books.get("order_books"):
         st.info("No order book data available")
         return
+
+    # Create a mapping from stock ID to ticker if available
+    stock_id_to_ticker = {}
+    if stock_tickers_data and stock_tickers_data.get("tickers"):
+        # TODO: Enhance the API to return a direct stock_id -> ticker mapping
+        tickers = stock_tickers_data["tickers"]
+        stock_ids = list(all_order_books["order_books"].keys())
+
+        # Simple heuristic: if we have the same number of tickers and stock
+        # IDs, we can try to match them alphabetically for better performance
+        if len(tickers) == len(stock_ids):
+            for ticker, stock_id in zip(sorted(tickers), sorted(stock_ids)):
+                stock_id_to_ticker[stock_id] = ticker
 
     # Create market overview data
     overview_data = []
@@ -107,10 +139,12 @@ def create_market_overview() -> None:
             spread = ask_price - bid_price
             spread_pct = (spread / bid_price) * 100 if bid_price > 0 else 0
 
+        # Use ticker if available, otherwise fall back to truncated stock ID
+        display_name = stock_id_to_ticker.get(stock_id, stock_id[:8] + "...")
+
         overview_data.append(
             {
-                # TODO: Get the ticker from the stock ID
-                "Stock ID": stock_id[:8] + "...",
+                "Ticker": display_name,
                 "Best Bid ($)": f"{float(best_bid['price']):.2f}" if best_bid else "-",
                 "Best Ask ($)": f"{float(best_ask['price']):.2f}" if best_ask else "-",
                 "Spread ($)": f"${spread:.2f}" if spread else "-",
