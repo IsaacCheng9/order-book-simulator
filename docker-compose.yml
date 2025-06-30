@@ -94,6 +94,21 @@ services:
       timeout: 3s
       retries: 5
 
+  streamlit:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.streamlit
+    depends_on:
+      - redis
+      - gateway
+    ports:
+      - "8501:8501"
+    environment:
+      - REDIS_URL=redis://redis:6379/0
+      - GATEWAY_URL=http://gateway:8000
+    volumes:
+      - ./src:/app/src # For development hot-reload
+
 volumes:
   kafka_data:
     driver: local

@@ -1,0 +1,21 @@
+FROM python:3.13-slim
+
+WORKDIR /app
+
+# Copy dependency files
+COPY pyproject.toml ./
+COPY uv.lock ./
+COPY README.md ./
+
+# Install uv and dependencies
+RUN pip install uv
+RUN uv sync --frozen
+
+# Copy source code
+COPY src/ ./src/
+
+# Expose Streamlit's default port
+EXPOSE 8501
+
+# Run Streamlit
+CMD ["uv", "run", "streamlit", "run", "src/order_book_simulator/ui/streamlit_app.py", "--server.address", "0.0.0.0"]

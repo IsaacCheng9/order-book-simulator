@@ -18,8 +18,10 @@ dependencies = [
     "pydantic>=2.10.6",
     "redis>=5.2.1",
     "sqlalchemy>=2.0.37",
+    "streamlit>=1.46.1",
     "uvicorn>=0.34.0",
     "uvloop>=0.21.0",
+    "watchdog>=6.0.0",
 ]
 
 [project.scripts]
