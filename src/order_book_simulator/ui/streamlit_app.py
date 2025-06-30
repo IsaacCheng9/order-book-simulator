@@ -5,6 +5,26 @@ import requests
 import streamlit as st
 
 
+def format_timestamp(iso_timestamp: str) -> str:
+    """
+    Formats an ISO timestamp to a more readable format.
+
+    Args:
+        iso_timestamp: ISO format timestamp string
+
+    Returns:
+        The timestamp string in a human-readable format
+    """
+    try:
+        # Parse the ISO timestamp
+        dt = datetime.fromisoformat(iso_timestamp.replace("Z", "+00:00"))
+        # Format as: "30 Dec 2024 at 14:25:23 UTC"
+        return dt.strftime("%d %b %Y at %H:%M:%S UTC")
+    except (ValueError, AttributeError):
+        # Fallback to original if parsing fails
+        return iso_timestamp
+
+
 def check_gateway_connection() -> bool:
     """
     Checks the connection to the gateway service.
@@ -160,7 +180,8 @@ def create_market_overview() -> None:
 
         # Show last update time
         if all_order_books.get("timestamp"):
-            st.caption(f"Last updated: {all_order_books['timestamp']}")
+            formatted_time = format_timestamp(all_order_books["timestamp"])
+            st.caption(f"Last Updated: {formatted_time}")
     else:
         st.info("No active order books found")
 
@@ -259,7 +280,8 @@ def main():
 
             # Show last updated timestamp
             if order_book_data.get("timestamp"):
-                st.caption(f"Last updated: {order_book_data['timestamp']}")
+                formatted_time = format_timestamp(order_book_data["timestamp"])
+                st.caption(f"Last Updated: {formatted_time}")
         else:
             st.info(f"No order book data available for {ticker}")
 
