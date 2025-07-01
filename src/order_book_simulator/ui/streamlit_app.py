@@ -59,10 +59,7 @@ def main():
         stocks_data = get_all_stocks()
         if stocks_data and stocks_data.get("stocks"):
             stock_options = [stock["ticker"] for stock in stocks_data["stocks"]]
-            if stock_options:
-                ticker = st.sidebar.selectbox("Select Stock", stock_options)
-            else:
-                st.sidebar.warning("No stocks available")
+            ticker = st.sidebar.selectbox("Select Stock", stock_options)
         # Fallback to hardcoded list if API is unavailable
         else:
             ticker = st.sidebar.selectbox(
