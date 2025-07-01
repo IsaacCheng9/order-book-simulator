@@ -2,7 +2,10 @@ from datetime import datetime, timezone
 
 import streamlit as st
 
-from order_book_simulator.ui.components.api_client import check_gateway_connection
+from order_book_simulator.ui.components.api_client import (
+    check_gateway_connection,
+    get_all_stocks,
+)
 from order_book_simulator.ui.components.market_overview import (
     create_auto_refresh_market_overview,
     create_market_overview,
@@ -52,18 +55,20 @@ def main():
     # Stock selection (only shown for single stock view)
     ticker = None
     if view_mode == "Single Stock":
-        ticker = st.sidebar.selectbox(
-            "Select Stock",
-            [
-                "AAPL",
-                "AMZN",
-                "GOOGL",
-                "META",
-                "MSFT",
-                "NVDA",
-                "TSLA",
-            ],
-        )
+        # Fetch all stocks from database
+        stocks_data = get_all_stocks()
+        if stocks_data and stocks_data.get("stocks"):
+            stock_options = [stock["ticker"] for stock in stocks_data["stocks"]]
+            if stock_options:
+                ticker = st.sidebar.selectbox("Select Stock", stock_options)
+            else:
+                st.sidebar.warning("No stocks available")
+        # Fallback to hardcoded list if API is unavailable
+        else:
+            ticker = st.sidebar.selectbox(
+                "Select Stock",
+                ["AAPL", "AMZN", "GOOGL", "META", "MSFT", "NVDA", "TSLA"],
+            )
 
     # Auto-refresh controls
     st.sidebar.subheader("Auto-Refresh")
