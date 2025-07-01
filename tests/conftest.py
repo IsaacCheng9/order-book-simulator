@@ -78,6 +78,22 @@ def db_session() -> AsyncSession:
         result = MagicMock()
         query_str = str(query)
 
+        # Handle get_all_stocks query first (returns ticker, company_name
+        # pairs)
+        if (
+            "company_name" in query_str.lower()
+            and "ticker" in query_str.lower()
+            and "WHERE" not in query_str.upper()
+        ):
+            mock_rows = [
+                ("AAPL", "Apple Inc."),
+                ("GOOGL", "Alphabet Inc."),
+                ("MSFT", "Microsoft Corporation"),
+                ("TSLA", "Tesla Inc."),
+            ]
+            result.__iter__.return_value = iter(mock_rows)
+            return result
+
         # Handle get_tickers_by_ids query
         if "SELECT stock.ticker" in query_str and hasattr(query, "compile"):
             compiled = query.compile()
