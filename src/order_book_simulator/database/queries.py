@@ -68,3 +68,18 @@ async def get_stock_id_ticker_mapping(
     query = select(Stock.id, Stock.ticker).where(Stock.id.in_(stock_ids))
     result = await db.execute(query)
     return {str(row[0]): row[1] for row in result}
+
+
+async def get_all_stocks(db: AsyncSession) -> list[dict[str, str]]:
+    """
+    Gets all stocks from the database.
+
+    Args:
+        db: The database session.
+
+    Returns:
+        A list of dictionaries containing stock information.
+    """
+    query = select(Stock.ticker, Stock.company_name).order_by(Stock.ticker)
+    result = await db.execute(query)
+    return [{"ticker": row[0], "company_name": row[1]} for row in result]

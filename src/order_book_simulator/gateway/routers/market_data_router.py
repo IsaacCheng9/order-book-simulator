@@ -9,6 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from order_book_simulator.common.cache import order_book_cache
 from order_book_simulator.database.connection import get_db
 from order_book_simulator.database.queries import (
+    get_all_stocks,
     get_stock_by_ticker,
     get_stock_id_ticker_mapping,
 )
@@ -43,6 +44,24 @@ async def get_active_stocks(db: AsyncSession = Depends(get_db)) -> dict[str, Any
         "timestamp": datetime.now(timezone.utc).isoformat(),
         "tickers": sorted(tickers),
         "stock_id_to_ticker": stock_id_to_ticker,
+    }
+
+
+@market_data_router.get("/stocks")
+async def get_all_stocks_endpoint(db: AsyncSession = Depends(get_db)) -> dict[str, Any]:
+    """
+    Returns all stocks available in the database.
+
+    Args:
+        db: The database session.
+
+    Returns:
+        A dictionary containing all stocks with their tickers and company names.
+    """
+    stocks = await get_all_stocks(db)
+    return {
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "stocks": stocks,
     }
 
 

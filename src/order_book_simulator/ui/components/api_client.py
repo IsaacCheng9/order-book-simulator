@@ -85,3 +85,22 @@ def get_active_stock_tickers() -> dict | None:
     except Exception as e:
         st.error(f"Error fetching stock tickers: {e}")
         return None
+
+
+def get_all_stocks() -> dict | None:
+    """
+    Fetches all stocks from the database.
+
+    Returns:
+        Dictionary containing all stocks or None if unavailable
+    """
+    try:
+        response = requests.get(f"{GATEWAY_URL}/v1/market-data/stocks", timeout=5)
+        if response.status_code == 200:
+            return response.json()
+        else:
+            st.error(f"Failed to fetch stocks: {response.status_code}")
+            return None
+    except Exception as e:
+        st.error(f"Error fetching stocks: {e}")
+        return None

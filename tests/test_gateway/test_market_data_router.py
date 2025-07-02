@@ -57,3 +57,33 @@ def test_get_active_stocks_empty(test_client):
     assert "stock_id_to_ticker" in data
     assert len(data["tickers"]) == 0
     assert len(data["stock_id_to_ticker"]) == 0
+
+
+def test_get_all_stocks(test_client):
+    """Tests getting all stocks from the database."""
+    response = test_client.get("/v1/market-data/stocks")
+    assert response.status_code == 200
+    data = response.json()
+
+    # Check response structure
+    assert "timestamp" in data
+    assert "stocks" in data
+
+    # Check mock data is returned
+    stocks = data["stocks"]
+    assert len(stocks) == 4
+
+    # Verify expected stocks are present (from conftest.py mock)
+    expected_stocks = [
+        {"ticker": "AAPL", "company_name": "Apple Inc."},
+        {"ticker": "GOOGL", "company_name": "Alphabet Inc."},
+        {"ticker": "MSFT", "company_name": "Microsoft Corporation"},
+        {"ticker": "TSLA", "company_name": "Tesla Inc."},
+    ]
+
+    for expected_stock in expected_stocks:
+        assert expected_stock in stocks
+
+    # Verify stocks are sorted by ticker (from ORDER BY in query)
+    tickers = [stock["ticker"] for stock in stocks]
+    assert tickers == sorted(tickers)
