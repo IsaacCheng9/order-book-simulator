@@ -104,3 +104,42 @@ def get_all_stocks() -> dict | None:
     except Exception as e:
         st.error(f"Error fetching stocks: {e}")
         return None
+
+
+def submit_order(order_data: dict) -> dict | None:
+    """
+    Submits an order to the order book system.
+
+    Args:
+        order_data: Dictionary containing order information
+
+    Returns:
+        Order response dictionary or None if submission failed
+    """
+    try:
+        response = requests.post(
+            f"{GATEWAY_URL}/v1/order-book", json=order_data, timeout=10
+        )
+        if response.status_code == 200:
+            return response.json()
+        # Validation error
+        elif response.status_code == 422:
+            try:
+                error_detail = response.json().get("detail", "Validation error")
+            except ValueError:
+                error_detail = f"Validation error (HTTP {response.status_code})"
+            st.error(f"Order validation failed: {error_detail}")
+            return None
+        # Other non-200 status codes
+        else:
+            st.error(f"Failed to submit order: {response.status_code}")
+            if response.content:
+                try:
+                    error_msg = response.json().get("detail", "Unknown error")
+                    st.error(f"Error details: {error_msg}")
+                except ValueError:
+                    st.error(f"Error (HTTP {response.status_code})")
+            return None
+    except Exception as e:
+        st.error(f"Error submitting order: {e}")
+        return None
