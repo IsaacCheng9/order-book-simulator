@@ -124,14 +124,21 @@ def submit_order(order_data: dict) -> dict | None:
             return response.json()
         # Validation error
         elif response.status_code == 422:
-            error_detail = response.json().get("detail", "Validation error")
+            try:
+                error_detail = response.json().get("detail", "Validation error")
+            except ValueError:
+                error_detail = f"Validation error (HTTP {response.status_code})"
             st.error(f"Order validation failed: {error_detail}")
             return None
+        # Other non-200 status codes
         else:
             st.error(f"Failed to submit order: {response.status_code}")
             if response.content:
-                error_msg = response.json().get("detail", "Unknown error")
-                st.error(f"Error details: {error_msg}")
+                try:
+                    error_msg = response.json().get("detail", "Unknown error")
+                    st.error(f"Error details: {error_msg}")
+                except ValueError:
+                    st.error(f"Validation error (HTTP {response.status_code})")
             return None
     except Exception as e:
         st.error(f"Error submitting order: {e}")
