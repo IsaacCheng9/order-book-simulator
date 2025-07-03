@@ -68,11 +68,14 @@ def create_order_form() -> None:
                     help="Price per share for limit orders",
                 )
 
+        # Persist the user ID in session state for consistency
+        if "user_id" not in st.session_state:
+            st.session_state.user_id = str(uuid4())
         # User ID at bottom left (simplified for demo)
         user_id = st.text_input(
             "User ID",
-            value=str(uuid4()),
-            help="Unique identifier for the user (auto-generated)",
+            value=st.session_state.user_id,
+            help="Unique identifier for the user (persists for this session)",
         )
 
         # Submit button
