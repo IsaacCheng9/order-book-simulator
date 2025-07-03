@@ -14,6 +14,7 @@ from order_book_simulator.ui.components.order_book import (
     create_auto_refresh_order_book,
     display_single_stock_order_book,
 )
+from order_book_simulator.ui.components.order_form import create_order_form
 
 
 def main():
@@ -48,13 +49,14 @@ def main():
         "View Mode",
         [
             "Market Overview",
-            "Single Stock",
+            "Order Book for Single Stock",
+            "Submit Order",
         ],
     )
 
     # Stock selection (only shown for single stock view)
     ticker = None
-    if view_mode == "Single Stock":
+    if view_mode == "Order Book for Single Stock":
         # Fetch all stocks from database
         stocks_data = get_all_stocks()
         if stocks_data and stocks_data.get("stocks"):
@@ -98,12 +100,17 @@ def main():
             auto_refresh_fragment()
         else:
             create_market_overview()
-    elif view_mode == "Single Stock" and ticker:
+    elif view_mode == "Order Book for Single Stock" and ticker:
         if auto_refresh_enabled:
             auto_refresh_fragment = create_auto_refresh_order_book(refresh_interval)
             auto_refresh_fragment(ticker)
         else:
             display_single_stock_order_book(ticker)
+    elif view_mode == "Submit Order":
+        if gateway_connected:
+            create_order_form()
+        else:
+            st.error("Gateway connection required to submit orders")
 
 
 if __name__ == "__main__":
