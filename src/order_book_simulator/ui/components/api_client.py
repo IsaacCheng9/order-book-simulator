@@ -138,7 +138,7 @@ def submit_order(order_data: dict) -> dict | None:
                     error_msg = response.json().get("detail", "Unknown error")
                     st.error(f"Error details: {error_msg}")
                 except ValueError:
-                    st.error(f"Validation error (HTTP {response.status_code})")
+                    st.error(f"Error (HTTP {response.status_code})")
             return None
     except Exception as e:
         st.error(f"Error submitting order: {e}")
