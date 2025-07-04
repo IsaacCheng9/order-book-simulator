@@ -173,6 +173,9 @@ async def get_trade_analytics_by_stock(
 
     Returns:
         A dictionary containing trade analytics.
+
+    Raises:
+        ValueError: If no trades are found for the stock.
     """
 
     query = select(
@@ -191,7 +194,7 @@ async def get_trade_analytics_by_stock(
     row = result.first()
 
     if row is None or row.trade_count == 0:
-        raise Exception(f"No trades found for stock {stock_id}")
+        raise ValueError(f"No trades found for stock {stock_id}")
 
     return {
         "trade_count": row.trade_count,

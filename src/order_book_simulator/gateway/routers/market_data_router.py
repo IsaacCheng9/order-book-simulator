@@ -169,7 +169,12 @@ async def get_stock_trade_analytics(
         )
 
     since_time = datetime.now(timezone.utc) - timedelta(hours=since_hours)
-    analytics = await get_trade_analytics_by_stock(stock.id, db, since=since_time)
+    try:
+        analytics = await get_trade_analytics_by_stock(stock.id, db, since=since_time)
+    except ValueError:
+        raise HTTPException(
+            status_code=404, detail=f"No trades found for stock {ticker}"
+        )
 
     return {
         "timestamp": datetime.now(timezone.utc).isoformat(),
