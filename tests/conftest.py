@@ -1,3 +1,4 @@
+from datetime import datetime, timezone
 from unittest.mock import AsyncMock, MagicMock
 from uuid import UUID, uuid4
 
@@ -112,16 +113,95 @@ def db_session() -> AsyncSession:
                 result.__iter__.return_value = iter(mock_rows)
                 return result
 
-        # Handle stock lookup by ID
-        if "stock" in query_str.lower() and "WHERE" in query_str:
+        # Handle stock lookup by ID or ticker
+        if (
+            "stock" in query_str.lower()
+            and "WHERE" in query_str
+            and "trade" not in query_str.lower()
+        ):
             stock = MagicMock()
-            if hasattr(query.whereclause, "right"):
-                stock.id = query.whereclause.right.value
+            stock_value = None
+
+            # Try to extract the value from the where clause
+            if hasattr(query, "whereclause") and hasattr(query.whereclause, "right"):
+                stock_value = query.whereclause.right.value
+
+            if isinstance(stock_value, str):
+                # Ticker lookup
+                stock.id = uuid4()
+                stock.ticker = stock_value
+            elif stock_value:
+                # ID lookup
+                stock.id = stock_value
+                stock.ticker = f"STOCK_{stock_value}"
             else:
-                # Handle IN clause for multiple IDs
-                stock.id = query.whereclause.right.clauses[0].value
-            stock.ticker = f"STOCK_{stock.id}"
+                # Fallback
+                stock.id = uuid4()
+                stock.ticker = "AAPL"
+
             result.scalar_one_or_none.return_value = stock
+            return result
+
+        # Handle trade queries - get_recent_trades
+        if (
+            "SELECT trade" in query_str
+            and "stock.ticker" in query_str
+            and "JOIN" in query_str.upper()
+        ):
+            # Mock recent trades across all stocks
+            mock_trade_rows = []
+            for i in range(3):  # Return 3 mock trades
+                mock_trade = MagicMock()
+                mock_trade.id = uuid4()
+                mock_trade.stock_id = uuid4()
+                mock_trade.price = f"{100 + i}.00"
+                mock_trade.quantity = f"{10 + i}.00"
+                mock_trade.total_amount = f"{(100 + i) * (10 + i)}.00"
+                mock_trade.trade_time = datetime.now(timezone.utc)
+                mock_trade.buyer_order_id = uuid4()
+                mock_trade.seller_order_id = uuid4()
+
+                mock_ticker = f"STOCK_{i}"
+                mock_trade_rows.append((mock_trade, mock_ticker))
+
+            result.all.return_value = mock_trade_rows
+            return result
+
+        # Handle trade queries - get_trades_by_stock
+        if (
+            "SELECT trade" in query_str
+            and "stock_id" in query_str
+            and "ORDER BY" in query_str.upper()
+        ):
+            # Mock trades for specific stock
+            mock_trades = []
+            for i in range(2):  # Return 2 mock trades
+                mock_trade = MagicMock()
+                mock_trade.id = uuid4()
+                mock_trade.stock_id = uuid4()
+                mock_trade.price = f"{150 + i}.00"
+                mock_trade.quantity = f"{5 + i}.00"
+                mock_trade.total_amount = f"{(150 + i) * (5 + i)}.00"
+                mock_trade.trade_time = datetime.now(timezone.utc)
+                mock_trade.buyer_order_id = uuid4()
+                mock_trade.seller_order_id = uuid4()
+                mock_trades.append(mock_trade)
+
+            result.scalars.return_value.all.return_value = mock_trades
+            return result
+
+        # Handle trade analytics queries
+        if (
+            "func.count" in query_str.lower() or "COUNT" in query_str.upper()
+        ) and "trade" in query_str.lower():
+            mock_row = MagicMock()
+            mock_row.trade_count = 10
+            mock_row.total_volume = 1000.00
+            mock_row.total_value = 150000.00
+            mock_row.avg_price = 150.00
+            mock_row.min_price = 145.00
+            mock_row.max_price = 155.00
+            result.first.return_value = mock_row
             return result
 
         return result
@@ -149,7 +229,7 @@ def order_book() -> OrderBook:
 
 
 @pytest.fixture(autouse=True)
-def mock_redis(monkeypatch):
+def mock_redis():
     """Creates a mock Redis instance for testing."""
     mock_data = {}
 
