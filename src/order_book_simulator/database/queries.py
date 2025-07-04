@@ -1,9 +1,10 @@
+from datetime import datetime
 from uuid import UUID
 
-from sqlalchemy import select
+from sqlalchemy import desc, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from order_book_simulator.database.db_models import Stock
+from order_book_simulator.database.db_models import Stock, Trade
 
 
 async def get_stock_by_ticker(ticker: str, db: AsyncSession) -> Stock | None:
@@ -83,3 +84,120 @@ async def get_all_stocks(db: AsyncSession) -> list[dict[str, str]]:
     query = select(Stock.ticker, Stock.company_name).order_by(Stock.ticker)
     result = await db.execute(query)
     return [{"ticker": row[0], "company_name": row[1]} for row in result]
+
+
+async def get_trades_by_stock(
+    stock_id: UUID, db: AsyncSession, limit: int = 100
+) -> list[dict]:
+    """
+    Gets recent trades for a specific stock.
+
+    Args:
+        stock_id: The stock ID to get trades for.
+        db: The database session.
+        limit: Maximum number of trades to return.
+
+    Returns:
+        A list of trade dictionaries.
+    """
+    query = (
+        select(Trade)
+        .where(Trade.stock_id == stock_id)
+        .order_by(desc(Trade.trade_time))
+        .limit(limit)
+    )
+    result = await db.execute(query)
+    trades = result.scalars().all()
+
+    return [
+        {
+            "id": str(trade.id),
+            "stock_id": str(trade.stock_id),
+            "price": str(trade.price),
+            "quantity": str(trade.quantity),
+            "total_amount": str(trade.total_amount),
+            "trade_time": trade.trade_time.isoformat(),
+            "buyer_order_id": str(trade.buyer_order_id),
+            "seller_order_id": str(trade.seller_order_id),
+        }
+        for trade in trades
+    ]
+
+
+async def get_recent_trades(db: AsyncSession, limit: int = 100) -> list[dict]:
+    """
+    Gets recent trades across all stocks.
+
+    Args:
+        db: The database session.
+        limit: Maximum number of trades to return.
+
+    Returns:
+        A list of trade dictionaries with stock information.
+    """
+    query = (
+        select(Trade, Stock.ticker)
+        .join(Stock, Trade.stock_id == Stock.id)
+        .order_by(desc(Trade.trade_time))
+        .limit(limit)
+    )
+    result = await db.execute(query)
+    rows = result.all()
+
+    return [
+        {
+            "id": str(trade.id),
+            "stock_id": str(trade.stock_id),
+            "ticker": ticker,
+            "price": str(trade.price),
+            "quantity": str(trade.quantity),
+            "total_amount": str(trade.total_amount),
+            "trade_time": trade.trade_time.isoformat(),
+            "buyer_order_id": str(trade.buyer_order_id),
+            "seller_order_id": str(trade.seller_order_id),
+        }
+        for trade, ticker in rows
+    ]
+
+
+async def get_trade_analytics_by_stock(
+    stock_id: UUID, db: AsyncSession, since: datetime | None = None
+) -> dict:
+    """
+    Gets trade analytics for a specific stock.
+
+    Args:
+        stock_id: The stock ID to get analytics for.
+        db: The database session.
+        since: Optional datetime to filter trades from.
+
+    Returns:
+        A dictionary containing trade analytics.
+    """
+
+    query = select(
+        func.count(Trade.id).label("trade_count"),
+        func.sum(Trade.quantity).label("total_volume"),
+        func.sum(Trade.total_amount).label("total_value"),
+        func.avg(Trade.price).label("avg_price"),
+        func.min(Trade.price).label("min_price"),
+        func.max(Trade.price).label("max_price"),
+    ).where(Trade.stock_id == stock_id)
+
+    if since:
+        query = query.where(Trade.trade_time >= since)
+
+    result = await db.execute(query)
+    row = result.first()
+
+    if row is None:
+        raise Exception(f"No trades found for stock {stock_id}")
+
+    return {
+        "trade_count": row.trade_count,
+        "total_volume": str(row.total_volume),
+        "total_value": str(row.total_value),
+        "avg_price": str(row.avg_price),
+        "min_price": str(row.min_price),
+        "max_price": str(row.max_price),
+    }
