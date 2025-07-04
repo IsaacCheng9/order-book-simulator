@@ -190,16 +190,16 @@ async def get_trade_analytics_by_stock(
     result = await db.execute(query)
     row = result.first()
 
-    if row is None:
+    if row is None or row.trade_count == 0:
         raise Exception(f"No trades found for stock {stock_id}")
 
     return {
         "trade_count": row.trade_count,
-        "total_volume": str(row.total_volume),
-        "total_value": str(row.total_value),
-        "avg_price": str(row.avg_price),
-        "min_price": str(row.min_price),
-        "max_price": str(row.max_price),
+        "total_volume": str(row.total_volume or 0),
+        "total_value": str(row.total_value or 0),
+        "avg_price": str(row.avg_price) if row.avg_price is not None else None,
+        "min_price": str(row.min_price) if row.min_price is not None else None,
+        "max_price": str(row.max_price) if row.max_price is not None else None,
     }
 
 
@@ -238,10 +238,10 @@ async def get_global_trade_analytics(
 
     return {
         "trade_count": row.trade_count,
-        "total_volume": str(row.total_volume),
-        "total_value": str(row.total_value),
-        "avg_quantity": str(row.avg_quantity),
-        "avg_price": str(row.avg_price),
-        "min_price": str(row.min_price),
-        "max_price": str(row.max_price),
+        "total_volume": str(row.total_volume or 0),
+        "total_value": str(row.total_value or 0),
+        "avg_quantity": str(row.avg_quantity) if row.avg_quantity is not None else None,
+        "avg_price": str(row.avg_price) if row.avg_price is not None else None,
+        "min_price": str(row.min_price) if row.min_price is not None else None,
+        "max_price": str(row.max_price) if row.max_price is not None else None,
     }
