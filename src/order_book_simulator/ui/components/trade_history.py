@@ -62,9 +62,10 @@ def display_trade_history():
                 # Convert to DataFrame for display
                 df = pd.DataFrame(trades)
 
-                # Format the DataFrame
+                # Format the DataFrame and sort by most recent first
                 if "trade_time" in df.columns:
                     df["trade_time"] = pd.to_datetime(df["trade_time"])
+                    df = df.sort_values(by="trade_time", ascending=False)
                     df["Time"] = df["trade_time"].dt.strftime("%H:%M:%S")
                     df["Date"] = df["trade_time"].dt.strftime("%Y-%m-%d")
 
@@ -97,10 +98,6 @@ def display_trade_history():
                 # Create display DataFrame
                 display_df = df[display_columns].copy()
                 display_df = display_df.rename(columns=column_mapping)
-
-                # Sort by most recent first
-                if "trade_time" in df.columns:
-                    display_df = display_df.sort_values(by="Time", ascending=False)
 
                 # Display summary metrics
                 st.subheader("Trade Summary")
