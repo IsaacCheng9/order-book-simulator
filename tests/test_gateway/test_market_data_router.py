@@ -1,4 +1,3 @@
-import asyncio
 from datetime import datetime, timezone
 from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import uuid4
@@ -240,50 +239,48 @@ def test_get_global_trade_analytics_custom_period(test_client):
     assert data["analytics"]["trade_count"] == 50
 
 
-def test_trade_analytics_null_handling():
-    """Tests that our NULL handling logic correctly handles SQL aggregate NULL values.
+@pytest.mark.asyncio
+async def test_trade_analytics_null_handling():
+    """
+    Tests that our NULL handling logic correctly handles SQL aggregate NULL
+    values.
 
     When no trades exist, SQL aggregate functions return:
     - COUNT: 0
     - SUM/AVG/MIN/MAX: NULL (Python None)
-
-    Our fix ensures we detect trade_count=0 and raise exceptions instead of
-    returning malformed data with 'None' strings.
     """
 
-    async def test_null_values():
-        # Create a mock database session
-        mock_db = AsyncMock()
+    # Create a mock database session
+    mock_db = AsyncMock()
 
-        # Mock execute to return a row with NULL aggregate values (like real SQL would)
-        mock_result = MagicMock()
-        mock_row = MagicMock()
-        mock_row.trade_count = 0  # COUNT returns 0
-        mock_row.total_volume = None  # SUM returns NULL
-        mock_row.total_value = None  # SUM returns NULL
-        mock_row.avg_price = None  # AVG returns NULL
-        mock_row.avg_quantity = None  # AVG returns NULL
-        mock_row.min_price = None  # MIN returns NULL
-        mock_row.max_price = None  # MAX returns NULL
-        mock_result.first.return_value = mock_row
-        mock_db.execute.return_value = mock_result
+    # Mock execute to return a row with NULL aggregate values (like real SQL
+    # would)
+    mock_result = MagicMock()
+    mock_row = MagicMock()
+    mock_row.trade_count = 0  # COUNT returns 0
+    mock_row.total_volume = None  # SUM returns NULL
+    mock_row.total_value = None  # SUM returns NULL
+    mock_row.avg_price = None  # AVG returns NULL
+    mock_row.avg_quantity = None  # AVG returns NULL
+    mock_row.min_price = None  # MIN returns NULL
+    mock_row.max_price = None  # MAX returns NULL
+    mock_result.first.return_value = mock_row
+    mock_db.execute.return_value = mock_result
 
-        # Test stock analytics - should raise exception when trade_count = 0
-        with pytest.raises(Exception, match="No trades found for stock"):
-            await get_trade_analytics_by_stock(uuid4(), mock_db)
+    # Test stock analytics - should raise exception when trade_count = 0
+    with pytest.raises(Exception, match="No trades found for stock"):
+        await get_trade_analytics_by_stock(uuid4(), mock_db)
 
-        # Test global analytics - should now return empty analytics when trade_count = 0
-        result = await get_global_trade_analytics(mock_db)
-        assert result["trade_count"] == 0
-        assert result["total_volume"] == "0"
-        assert result["total_value"] == "0"
-        assert result["avg_quantity"] is None
-        assert result["avg_price"] is None
-        assert result["min_price"] is None
-        assert result["max_price"] is None
-
-    # Run the async test
-    asyncio.run(test_null_values())
+    # Test global analytics - should return empty analytics when
+    # trade_count = 0
+    result = await get_global_trade_analytics(mock_db)
+    assert result["trade_count"] == 0
+    assert result["total_volume"] == "0"
+    assert result["total_value"] == "0"
+    assert result["avg_quantity"] is None
+    assert result["avg_price"] is None
+    assert result["min_price"] is None
+    assert result["max_price"] is None
 
 
 def test_get_market_data(test_client):
