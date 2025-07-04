@@ -3,8 +3,6 @@ import streamlit as st
 
 from order_book_simulator.ui.components.api_client import (
     get_all_trades,
-    get_global_trade_analytics,
-    get_trade_analytics,
     get_trades_for_stock,
 )
 from order_book_simulator.ui.components.utils import format_timestamp
@@ -174,7 +172,6 @@ def display_trade_history():
                 st.dataframe(
                     display_df,
                     use_container_width=True,
-                    hide_index=True,
                     column_config={
                         "Price ($)": st.column_config.NumberColumn(
                             "Price ($)", format="$%.2f"
