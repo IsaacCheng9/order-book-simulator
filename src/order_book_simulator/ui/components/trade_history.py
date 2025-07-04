@@ -26,7 +26,7 @@ def display_trade_history():
         limit = st.number_input(
             "Number of Trades",
             min_value=10,
-            max_value=1000,
+            max_value=10_000,
             value=100,
             step=10,
             key="trade_limit",
