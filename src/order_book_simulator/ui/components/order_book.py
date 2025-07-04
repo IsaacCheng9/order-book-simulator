@@ -7,17 +7,34 @@ from order_book_simulator.ui.components.api_client import get_order_book_data
 from order_book_simulator.ui.components.utils import format_timestamp
 
 
-def display_single_stock_order_book(ticker: str) -> None:
+def display_individual_order_book() -> None:
     """
-    Displays the order book for a single stock.
+    Displays the order book for a single stock with stock selection controls.
+    """
+    st.header("Individual Order Book View")
 
-    Args:
-        ticker: The stock ticker to display
-    """
-    st.subheader(f"Order Book for {ticker}")
+    # Stock selection controls
+    available_stocks = st.session_state.get("available_stocks", [])
+    if not available_stocks:
+        st.error("No stocks available. Please check the gateway connection.")
+        return
+
+    # Stock selection dropdown
+    selected_stock = st.selectbox(
+        "Select Stock",
+        available_stocks,
+        key="orderbook_stock_selection",
+        width=150,
+    )
+
+    if not selected_stock:
+        st.info("Please select a stock to view its order book.")
+        return
+
+    st.subheader(f"Order Book for {selected_stock}")
 
     # Fetch real order book data
-    order_book_data = get_order_book_data(ticker)
+    order_book_data = get_order_book_data(selected_stock)
 
     if order_book_data and order_book_data.get("book"):
         book = order_book_data["book"]
@@ -59,7 +76,7 @@ def display_single_stock_order_book(ticker: str) -> None:
             formatted_time = format_timestamp(order_book_data["timestamp"])
             st.caption(f"Last Updated: {formatted_time}")
     else:
-        st.info(f"No order book data available for {ticker}")
+        st.info(f"No order book data available for {selected_stock}")
 
 
 def create_auto_refresh_order_book(interval: int) -> Callable:
@@ -74,7 +91,7 @@ def create_auto_refresh_order_book(interval: int) -> Callable:
     """
 
     @st.fragment(run_every=interval)
-    def auto_refresh_order_book(ticker: str):
-        display_single_stock_order_book(ticker)
+    def auto_refresh_order_book():
+        display_individual_order_book()
 
     return auto_refresh_order_book

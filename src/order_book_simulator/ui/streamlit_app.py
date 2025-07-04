@@ -12,7 +12,7 @@ from order_book_simulator.ui.components.market_overview import (
 )
 from order_book_simulator.ui.components.order_book import (
     create_auto_refresh_order_book,
-    display_single_stock_order_book,
+    display_individual_order_book,
 )
 from order_book_simulator.ui.components.order_form import create_order_form
 from order_book_simulator.ui.components.trade_history import (
@@ -41,42 +41,32 @@ def main():
         st.sidebar.error("❌ Gateway Disconnected")
 
     # View mode selection - defaults to market overview
-    view_mode = st.sidebar.radio(
-        "View Mode",
+    navigation = st.sidebar.radio(
+        "Navigation",
         [
             "Market Overview",
-            "Order Book for Single Stock",
+            "Individual Order Book",
             "Trade History",
             "Submit Order",
         ],
     )
 
-    # Stock selection (only shown for single stock view)
-    ticker = None
-    if view_mode == "Order Book for Single Stock":
-        # Fetch all stocks from database
-        stocks_data = get_all_stocks()
-        if stocks_data and stocks_data.get("stocks"):
-            stock_options = [stock["ticker"] for stock in stocks_data["stocks"]]
-            ticker = st.sidebar.selectbox("Select Stock", stock_options)
-            # Store available stocks in session state for trade history component
-            st.session_state.available_stocks = stock_options
+    # Store available stocks in session state for components that need them
+    stocks_data = get_all_stocks()
+    if stocks_data and stocks_data.get("stocks"):
+        stock_options = [stock["ticker"] for stock in stocks_data["stocks"]]
+        st.session_state.available_stocks = stock_options
+    else:
         # Fallback to hardcoded list if API is unavailable
-        else:
-            ticker = st.sidebar.selectbox(
-                "Select Stock",
-                ["AAPL", "AMZN", "GOOGL", "META", "MSFT", "NVDA", "TSLA"],
-            )
-            # Store fallback stocks in session state
-            st.session_state.available_stocks = [
-                "AAPL",
-                "AMZN",
-                "GOOGL",
-                "META",
-                "MSFT",
-                "NVDA",
-                "TSLA",
-            ]
+        st.session_state.available_stocks = [
+            "AAPL",
+            "AMZN",
+            "GOOGL",
+            "META",
+            "MSFT",
+            "NVDA",
+            "TSLA",
+        ]
 
     # Auto-refresh controls
     st.sidebar.subheader("Auto-Refresh")
@@ -101,7 +91,7 @@ def main():
     )
 
     # Main content area - conditional on view mode with auto-refresh
-    if view_mode == "Market Overview":
+    if navigation == "Market Overview":
         if auto_refresh_enabled:
             auto_refresh_fragment = create_auto_refresh_market_overview(
                 refresh_interval
@@ -109,13 +99,13 @@ def main():
             auto_refresh_fragment()
         else:
             create_market_overview()
-    elif view_mode == "Order Book for Single Stock" and ticker:
+    elif navigation == "Individual Order Book":
         if auto_refresh_enabled:
             auto_refresh_fragment = create_auto_refresh_order_book(refresh_interval)
-            auto_refresh_fragment(ticker)
+            auto_refresh_fragment()
         else:
-            display_single_stock_order_book(ticker)
-    elif view_mode == "Trade History":
+            display_individual_order_book()
+    elif navigation == "Trade History":
         if gateway_connected:
             if auto_refresh_enabled:
                 auto_refresh_fragment = create_auto_refresh_trade_history(
@@ -126,7 +116,7 @@ def main():
                 display_trade_history()
         else:
             st.error("Gateway connection required to view trade history")
-    elif view_mode == "Submit Order":
+    elif navigation == "Submit Order":
         if gateway_connected:
             create_order_form()
         else:
