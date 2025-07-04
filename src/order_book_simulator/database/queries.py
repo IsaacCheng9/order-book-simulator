@@ -196,6 +196,11 @@ async def get_trade_analytics_by_stock(
     if row is None or row.trade_count == 0:
         raise ValueError(f"No trades found for stock {stock_id}")
 
+    # Calculate VWAP: total_value / total_volume
+    vwap = None
+    if row.total_volume and row.total_value and row.total_volume > 0:
+        vwap = float(row.total_value) / float(row.total_volume)
+
     return {
         "trade_count": row.trade_count,
         "total_volume": str(row.total_volume or 0),
@@ -203,6 +208,7 @@ async def get_trade_analytics_by_stock(
         "avg_price": str(row.avg_price) if row.avg_price is not None else None,
         "min_price": str(row.min_price) if row.min_price is not None else None,
         "max_price": str(row.max_price) if row.max_price is not None else None,
+        "vwap": str(vwap) if vwap is not None else None,
     }
 
 
@@ -245,7 +251,13 @@ async def get_global_trade_analytics(
             "avg_price": None,
             "min_price": None,
             "max_price": None,
+            "vwap": None,
         }
+
+    # Calculate VWAP: total_value / total_volume
+    vwap = None
+    if row.total_volume and row.total_value and row.total_volume > 0:
+        vwap = float(row.total_value) / float(row.total_volume)
 
     return {
         "trade_count": row.trade_count,
@@ -255,4 +267,5 @@ async def get_global_trade_analytics(
         "avg_price": str(row.avg_price) if row.avg_price is not None else None,
         "min_price": str(row.min_price) if row.min_price is not None else None,
         "max_price": str(row.max_price) if row.max_price is not None else None,
+        "vwap": str(vwap) if vwap is not None else None,
     }

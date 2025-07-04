@@ -189,6 +189,7 @@ def test_get_stock_trade_analytics_success(test_client):
     assert analytics["avg_price"] == "150.0"
     assert analytics["min_price"] == "145.0"
     assert analytics["max_price"] == "155.0"
+    assert "vwap" in analytics
 
 
 def test_get_stock_trade_analytics_custom_period(test_client):
@@ -226,6 +227,7 @@ def test_get_global_trade_analytics_success(test_client):
     assert analytics["avg_price"] == "150.0"
     assert analytics["min_price"] == "100.0"
     assert analytics["max_price"] == "200.0"
+    assert "vwap" in analytics
 
 
 def test_get_global_trade_analytics_custom_period(test_client):
@@ -281,6 +283,7 @@ async def test_trade_analytics_null_handling():
     assert result["avg_price"] is None
     assert result["min_price"] is None
     assert result["max_price"] is None
+    assert result["vwap"] is None
 
 
 def test_get_market_data(test_client):
