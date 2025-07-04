@@ -14,7 +14,7 @@ def create_market_overview() -> None:
     """
     Creates a market overview table showing best bid/ask for all stocks.
     """
-    st.subheader("Market Overview")
+    st.header("Market Overview")
 
     # Get all order books and stock tickers
     all_order_books = get_all_order_books()
