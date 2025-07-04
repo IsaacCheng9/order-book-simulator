@@ -10,8 +10,11 @@ from order_book_simulator.common.cache import order_book_cache
 from order_book_simulator.database.connection import get_db
 from order_book_simulator.database.queries import (
     get_all_stocks,
+    get_recent_trades,
     get_stock_by_ticker,
     get_stock_id_ticker_mapping,
+    get_trade_analytics_by_stock,
+    get_trades_by_stock,
 )
 from order_book_simulator.market_data.analytics import MarketDataAnalytics
 
@@ -108,4 +111,90 @@ async def get_market_data(
         if depth_stats["mid_price"]
         else None,
         "vwap_1min": str(vwap) if vwap else None,
+    }
+
+
+@market_data_router.get("/trades")
+async def get_all_recent_trades(
+    limit: int = 100, db: AsyncSession = Depends(get_db)
+) -> dict[str, Any]:
+    """
+    Returns recent trades across all stocks.
+
+    Args:
+        limit: Maximum number of trades to return.
+        db: The database session.
+
+    Returns:
+        A dictionary containing recent trades data.
+    """
+    trades = await get_recent_trades(db, limit=limit)
+
+    return {
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "trades": trades,
+        "count": len(trades),
+    }
+
+
+@market_data_router.get("/trades/{ticker}")
+async def get_stock_trades(
+    ticker: str, limit: int = 100, db: AsyncSession = Depends(get_db)
+) -> dict[str, Any]:
+    """
+    Returns recent trades for a specific stock.
+
+    Args:
+        ticker: The ticker symbol of the stock.
+        limit: Maximum number of trades to return.
+        db: The database session.
+
+    Returns:
+        A dictionary containing trades data for the stock.
+    """
+    stock = await get_stock_by_ticker(ticker, db)
+    if not stock:
+        raise HTTPException(
+            status_code=404, detail=f"Couldn't find stock with ticker {ticker}"
+        )
+
+    trades = await get_trades_by_stock(stock.id, db, limit=limit)
+
+    return {
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "ticker": ticker,
+        "trades": trades,
+        "count": len(trades),
+    }
+
+
+@market_data_router.get("/trades/{ticker}/analytics")
+async def get_stock_trade_analytics(
+    ticker: str, since_hours: int = 24, db: AsyncSession = Depends(get_db)
+) -> dict[str, Any]:
+    """
+    Returns trade analytics for a specific stock.
+
+    Args:
+        ticker: The ticker symbol of the stock.
+        since_hours: Number of hours to look back for analytics.
+        db: The database session.
+
+    Returns:
+        A dictionary containing trade analytics.
+    """
+    stock = await get_stock_by_ticker(ticker, db)
+    if not stock:
+        raise HTTPException(
+            status_code=404, detail=f"Couldn't find stock with ticker {ticker}"
+        )
+
+    since_time = datetime.now(timezone.utc) - timedelta(hours=since_hours)
+    analytics = await get_trade_analytics_by_stock(stock.id, db, since=since_time)
+
+    return {
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "ticker": ticker,
+        "period_hours": since_hours,
+        "analytics": analytics,
     }
