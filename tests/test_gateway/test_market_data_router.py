@@ -200,6 +200,39 @@ def test_get_stock_trade_analytics_custom_period(test_client):
     assert data["analytics"]["trade_count"] == 10  # From mock data
 
 
+def test_get_global_trade_analytics_success(test_client):
+    """Tests getting global trade analytics successfully."""
+    response = test_client.get("/v1/market-data/trades/analytics")
+    assert response.status_code == 200
+    data = response.json()
+
+    assert "timestamp" in data
+    assert "period_hours" in data
+    assert "analytics" in data
+    assert data["period_hours"] == 24  # Default value
+
+    # From mock data (global)
+    analytics = data["analytics"]
+    assert analytics["trade_count"] == 50
+    assert analytics["total_volume"] == "5000.0"
+    assert analytics["total_value"] == "750000.0"
+    assert analytics["avg_quantity"] == "100.0"
+    assert analytics["avg_price"] == "150.0"
+    assert analytics["min_price"] == "100.0"
+    assert analytics["max_price"] == "200.0"
+
+
+def test_get_global_trade_analytics_custom_period(test_client):
+    """Tests getting global trade analytics with custom time period."""
+    response = test_client.get("/v1/market-data/trades/analytics?since_hours=12")
+    assert response.status_code == 200
+    data = response.json()
+
+    assert data["period_hours"] == 12
+    # From mock data
+    assert data["analytics"]["trade_count"] == 50
+
+
 def test_get_market_data(test_client):
     """Tests getting market data for a specific stock."""
     ticker = "AAPL"
