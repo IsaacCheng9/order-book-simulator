@@ -67,12 +67,24 @@ def main():
         if stocks_data and stocks_data.get("stocks"):
             stock_options = [stock["ticker"] for stock in stocks_data["stocks"]]
             ticker = st.sidebar.selectbox("Select Stock", stock_options)
+            # Store available stocks in session state for trade history component
+            st.session_state.available_stocks = stock_options
         # Fallback to hardcoded list if API is unavailable
         else:
             ticker = st.sidebar.selectbox(
                 "Select Stock",
                 ["AAPL", "AMZN", "GOOGL", "META", "MSFT", "NVDA", "TSLA"],
             )
+            # Store fallback stocks in session state
+            st.session_state.available_stocks = [
+                "AAPL",
+                "AMZN",
+                "GOOGL",
+                "META",
+                "MSFT",
+                "NVDA",
+                "TSLA",
+            ]
 
     # Auto-refresh controls
     st.sidebar.subheader("Auto-Refresh")
