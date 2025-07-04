@@ -58,8 +58,6 @@ async def run_simulation() -> None:
 
     # Create and run simulator
     simulator = MarketSimulator(
-        rate_mode="fixed",
-        initial_orders_per_second=1,
         tickers=tickers,
         base_prices=base_prices,
         min_order_sizes=min_sizes,
