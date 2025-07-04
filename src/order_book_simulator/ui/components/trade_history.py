@@ -3,6 +3,7 @@ import streamlit as st
 
 from order_book_simulator.ui.components.api_client import (
     get_all_trades,
+    get_global_trade_analytics,
     get_trade_analytics,
     get_trades_for_stock,
 )
@@ -107,9 +108,16 @@ def display_trade_history():
                 col1, col2, col3, col4 = st.columns(4)
 
                 # Get actual total trades count
-                # TODO: Add support for actual total trades count for all stocks
                 actual_total_trades = len(trades)  # Default to displayed count
-                if view_mode == "Single Stock" and selected_stock:
+                if view_mode == "All Stocks":
+                    # Use global analytics for total trades across all stocks
+                    # over the last year (8760 hours)
+                    global_analytics_data = get_global_trade_analytics(since_hours=8760)
+                    if global_analytics_data and "analytics" in global_analytics_data:
+                        actual_total_trades = global_analytics_data["analytics"].get(
+                            "trade_count", len(trades)
+                        )
+                elif view_mode == "Single Stock" and selected_stock:
                     # Try to get actual total from analytics
                     analytics_data = get_trade_analytics(
                         selected_stock, since_hours=8760
