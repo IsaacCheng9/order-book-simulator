@@ -201,7 +201,6 @@ def display_trade_history():
         st.error(f"Error fetching trade data: {str(e)}")
 
 
-@st.fragment(run_every=3)
 def create_auto_refresh_trade_history(interval: int) -> Callable:
     """
     Creates an auto-refreshing trade history fragment with configurable
