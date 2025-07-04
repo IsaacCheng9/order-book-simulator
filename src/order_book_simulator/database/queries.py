@@ -201,3 +201,47 @@ async def get_trade_analytics_by_stock(
         "min_price": str(row.min_price),
         "max_price": str(row.max_price),
     }
+
+
+async def get_global_trade_analytics(
+    db: AsyncSession, since: datetime | None = None
+) -> dict:
+    """
+    Gets trade analytics across all stocks.
+
+    Args:
+        db: The database session.
+        since: Optional datetime to filter trades from.
+
+    Returns:
+        A dictionary containing global trade analytics.
+    """
+
+    query = select(
+        func.count(Trade.id).label("trade_count"),
+        func.sum(Trade.quantity).label("total_volume"),
+        func.sum(Trade.total_amount).label("total_value"),
+        func.avg(Trade.quantity).label("avg_quantity"),
+        func.avg(Trade.price).label("avg_price"),
+        func.min(Trade.price).label("min_price"),
+        func.max(Trade.price).label("max_price"),
+    )
+
+    if since:
+        query = query.where(Trade.trade_time >= since)
+
+    result = await db.execute(query)
+    row = result.first()
+
+    if row is None or row.trade_count == 0:
+        raise Exception("No trades found")
+
+    return {
+        "trade_count": row.trade_count,
+        "total_volume": str(row.total_volume),
+        "total_value": str(row.total_value),
+        "avg_quantity": str(row.avg_quantity),
+        "avg_price": str(row.avg_price),
+        "min_price": str(row.min_price),
+        "max_price": str(row.max_price),
+    }

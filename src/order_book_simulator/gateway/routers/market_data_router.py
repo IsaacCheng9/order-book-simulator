@@ -10,6 +10,7 @@ from order_book_simulator.common.cache import order_book_cache
 from order_book_simulator.database.connection import get_db
 from order_book_simulator.database.queries import (
     get_all_stocks,
+    get_global_trade_analytics,
     get_recent_trades,
     get_stock_by_ticker,
     get_stock_id_ticker_mapping,
@@ -88,6 +89,30 @@ async def get_all_recent_trades(
         "timestamp": datetime.now(timezone.utc).isoformat(),
         "trades": trades,
         "count": len(trades),
+    }
+
+
+@market_data_router.get("/trades/analytics")
+async def get_global_trade_analytics_endpoint(
+    since_hours: int = 24, db: AsyncSession = Depends(get_db)
+) -> dict[str, Any]:
+    """
+    Returns trade analytics across all stocks.
+
+    Args:
+        since_hours: Number of hours to look back for analytics.
+        db: The database session.
+
+    Returns:
+        A dictionary containing global trade analytics.
+    """
+    since_time = datetime.now(timezone.utc) - timedelta(hours=since_hours)
+    analytics = await get_global_trade_analytics(db, since=since_time)
+
+    return {
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "period_hours": since_hours,
+        "analytics": analytics,
     }
 
 
