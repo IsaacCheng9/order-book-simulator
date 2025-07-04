@@ -35,10 +35,6 @@ def main():
 
     # Connection status indicator
     gateway_connected = check_gateway_connection()
-    if gateway_connected:
-        st.sidebar.success("✅ Gateway Connected")
-    else:
-        st.sidebar.error("❌ Gateway Disconnected")
 
     # View mode selection - defaults to market overview
     navigation = st.sidebar.radio(
@@ -89,6 +85,11 @@ def main():
     st.sidebar.info(
         f"Last Updated: {datetime.now(timezone.utc).strftime('%H:%M:%S')} UTC"
     )
+
+    if gateway_connected:
+        st.sidebar.success("✅ Gateway Connected")
+    else:
+        st.sidebar.error("❌ Gateway Disconnected")
 
     # Main content area - conditional on view mode with auto-refresh
     if navigation == "Market Overview":
