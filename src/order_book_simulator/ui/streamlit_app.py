@@ -15,6 +15,10 @@ from order_book_simulator.ui.components.order_book import (
     display_single_stock_order_book,
 )
 from order_book_simulator.ui.components.order_form import create_order_form
+from order_book_simulator.ui.components.trade_history import (
+    create_auto_refresh_trade_history,
+    display_trade_history,
+)
 
 
 def main():
@@ -50,6 +54,7 @@ def main():
         [
             "Market Overview",
             "Order Book for Single Stock",
+            "Trade History",
             "Submit Order",
         ],
     )
@@ -106,6 +111,14 @@ def main():
             auto_refresh_fragment(ticker)
         else:
             display_single_stock_order_book(ticker)
+    elif view_mode == "Trade History":
+        if gateway_connected:
+            if auto_refresh_enabled:
+                create_auto_refresh_trade_history()
+            else:
+                display_trade_history()
+        else:
+            st.error("Gateway connection required to view trade history")
     elif view_mode == "Submit Order":
         if gateway_connected:
             create_order_form()
