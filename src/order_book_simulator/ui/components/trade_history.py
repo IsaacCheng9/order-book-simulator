@@ -24,9 +24,8 @@ def display_trade_history():
 
     with col2:
         limit = st.number_input(
-            "Number of Trades",
+            "Number of Trades to Display",
             min_value=10,
-            max_value=10_000,
             value=100,
             step=10,
             key="trade_limit",
@@ -95,6 +94,34 @@ def display_trade_history():
                     display_columns.append("total_amount")
                     column_mapping["total_amount"] = "Total ($)"
 
+                # Get actual total trades from API for overall context
+                actual_total_trades = len(trades)  # Default fallback
+
+                if view_mode == "All Stocks":
+                    # Get global trade count from API
+                    from order_book_simulator.ui.components.api_client import (
+                        get_global_trade_analytics,
+                    )
+
+                    analytics_data = get_global_trade_analytics(since_hours=8760)
+                    if analytics_data and "analytics" in analytics_data:
+                        actual_total_trades = analytics_data["analytics"].get(
+                            "trade_count", len(trades)
+                        )
+                elif view_mode == "Single Stock" and selected_stock:
+                    # Get stock-specific trade count from API
+                    from order_book_simulator.ui.components.api_client import (
+                        get_trade_analytics,
+                    )
+
+                    analytics_data = get_trade_analytics(
+                        selected_stock, since_hours=8760
+                    )
+                    if analytics_data and "analytics" in analytics_data:
+                        actual_total_trades = analytics_data["analytics"].get(
+                            "trade_count", len(trades)
+                        )
+
                 # Create display DataFrame
                 display_df = df[display_columns].copy()
                 display_df = display_df.rename(columns=column_mapping)
@@ -102,10 +129,13 @@ def display_trade_history():
                 # Display summary metrics
                 st.subheader("Trade Summary")
 
-                col1, col2, col3, col4 = st.columns(4)
+                # Total trades in its own row
+                st.metric("Total Trades", f"{actual_total_trades:,}")
 
-                # Calculate analytics from displayed trades
-                actual_total_trades = len(trades)
+                # Trade metrics for displayed trades
+                st.subheader(f"Trade Metrics (Last {len(trades)} Trades)")
+
+                col1, col2, col3, col4 = st.columns(4)
 
                 # Calculate price analytics from displayed trades
                 prices = [float(trade["price"]) for trade in trades] if trades else []
@@ -127,47 +157,48 @@ def display_trade_history():
                 vwap = total_value / total_volume if total_volume > 0 else None
 
                 with col1:
-                    st.metric("Total Trades", f"{actual_total_trades:,}")
-
-                with col2:
                     st.metric("Total Volume", f"{total_volume:,.2f}")
 
-                with col3:
+                with col2:
                     st.metric("Total Value", f"${total_value:,.2f}")
 
-                with col4:
+                with col3:
                     if trades:
                         avg_quantity = total_volume / len(trades)
                         st.metric("Average Quantity", f"{avg_quantity:.2f}")
                     else:
                         st.metric("Average Quantity", "N/A")
 
-                # Second row for price analytics
-                col1, col2, col3, col4 = st.columns(4)
-
-                with col1:
+                with col4:
                     if vwap is not None:
                         st.metric("VWAP", f"${vwap:.2f}")
                     else:
                         st.metric("VWAP", "N/A")
 
-                with col2:
-                    if avg_price is not None:
-                        st.metric("Avg Price", f"${avg_price:.2f}")
-                    else:
-                        st.metric("Avg Price", "N/A")
+                # Second row for price analytics
+                col1, col2, col3, col4 = st.columns(4)
 
-                with col3:
+                with col1:
+                    if avg_price is not None:
+                        st.metric("Average Price", f"${avg_price:.2f}")
+                    else:
+                        st.metric("Average Price", "N/A")
+
+                with col2:
                     if min_price is not None:
                         st.metric("Min Price", f"${min_price:.2f}")
                     else:
                         st.metric("Min Price", "N/A")
 
-                with col4:
+                with col3:
                     if max_price is not None:
                         st.metric("Max Price", f"${max_price:.2f}")
                     else:
                         st.metric("Max Price", "N/A")
+
+                with col4:
+                    # Empty column for balance
+                    st.empty()
 
                 # Display trades table
                 st.subheader("Recent Trades")
