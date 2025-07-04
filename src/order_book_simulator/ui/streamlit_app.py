@@ -118,7 +118,10 @@ def main():
     elif view_mode == "Trade History":
         if gateway_connected:
             if auto_refresh_enabled:
-                create_auto_refresh_trade_history()
+                auto_refresh_fragment = create_auto_refresh_trade_history(
+                    refresh_interval
+                )
+                auto_refresh_fragment()
             else:
                 display_trade_history()
         else:

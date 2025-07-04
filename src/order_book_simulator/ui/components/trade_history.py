@@ -1,3 +1,5 @@
+from typing import Callable
+
 import pandas as pd
 import streamlit as st
 
@@ -200,6 +202,21 @@ def display_trade_history():
 
 
 @st.fragment(run_every=3)
-def create_auto_refresh_trade_history():
-    """Auto-refreshing trade history component."""
-    display_trade_history()
+def create_auto_refresh_trade_history(interval: int) -> Callable:
+    """
+    Creates an auto-refreshing trade history fragment with configurable
+    interval.
+
+    Args:
+        interval: The interval in seconds at which to refresh the trade
+                  history.
+
+    Returns:
+        The auto-refreshing trade history fragment.
+    """
+
+    @st.fragment(run_every=interval)
+    def auto_refresh_trade_history():
+        display_trade_history()
+
+    return auto_refresh_trade_history
