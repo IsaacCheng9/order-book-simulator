@@ -3,6 +3,7 @@ import streamlit as st
 
 from order_book_simulator.ui.components.api_client import (
     get_all_trades,
+    get_trade_analytics,
     get_trades_for_stock,
 )
 from order_book_simulator.ui.components.utils import format_timestamp
@@ -105,8 +106,21 @@ def display_trade_history():
 
                 col1, col2, col3, col4 = st.columns(4)
 
+                # Get actual total trades count
+                # TODO: Add support for actual total trades count for all stocks
+                actual_total_trades = len(trades)  # Default to displayed count
+                if view_mode == "Single Stock" and selected_stock:
+                    # Try to get actual total from analytics
+                    analytics_data = get_trade_analytics(
+                        selected_stock, since_hours=8760
+                    )  # 1 year
+                    if analytics_data and "analytics" in analytics_data:
+                        actual_total_trades = analytics_data["analytics"].get(
+                            "trade_count", len(trades)
+                        )
+
                 with col1:
-                    st.metric("Total Trades", len(trades))
+                    st.metric("Total Trades", f"{actual_total_trades:,}")
 
                 with col2:
                     total_volume = sum(float(trade["quantity"]) for trade in trades)
@@ -118,10 +132,10 @@ def display_trade_history():
 
                 with col4:
                     if trades:
-                        avg_price = sum(
-                            float(trade["price"]) for trade in trades
+                        avg_quantity = sum(
+                            float(trade["quantity"]) for trade in trades
                         ) / len(trades)
-                        st.metric("Average Price", f"${avg_price:.2f}")
+                        st.metric("Average Quantity", f"{avg_quantity:.2f}")
 
                 # Display trades table
                 st.subheader("Recent Trades")
