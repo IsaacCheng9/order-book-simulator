@@ -234,7 +234,15 @@ async def get_global_trade_analytics(
     row = result.first()
 
     if row is None or row.trade_count == 0:
-        raise Exception("No trades found")
+        return {
+            "trade_count": 0,
+            "total_volume": "0",
+            "total_value": "0",
+            "avg_quantity": None,
+            "avg_price": None,
+            "min_price": None,
+            "max_price": None,
+        }
 
     return {
         "trade_count": row.trade_count,

@@ -241,7 +241,7 @@ def get_global_trade_analytics(since_hours: int = 24) -> dict | None:
     """
     try:
         response = requests.get(
-            f"{GATEWAY_URL}/v1/market-data/trades/analytics",
+            f"{GATEWAY_URL}/v1/market-data/global-trades-analytics",
             params={"since_hours": since_hours},
             timeout=5,
         )

@@ -209,7 +209,7 @@ def test_get_stock_trade_analytics_custom_period(test_client):
 
 def test_get_global_trade_analytics_success(test_client):
     """Tests getting global trade analytics successfully."""
-    response = test_client.get("/v1/market-data/trades/analytics")
+    response = test_client.get("/v1/market-data/global-trades-analytics")
     assert response.status_code == 200
     data = response.json()
 
@@ -231,7 +231,7 @@ def test_get_global_trade_analytics_success(test_client):
 
 def test_get_global_trade_analytics_custom_period(test_client):
     """Tests getting global trade analytics with custom time period."""
-    response = test_client.get("/v1/market-data/trades/analytics?since_hours=12")
+    response = test_client.get("/v1/market-data/global-trades-analytics?since_hours=12")
     assert response.status_code == 200
     data = response.json()
 
@@ -272,9 +272,15 @@ def test_trade_analytics_null_handling():
         with pytest.raises(Exception, match="No trades found for stock"):
             await get_trade_analytics_by_stock(uuid4(), mock_db)
 
-        # Test global analytics - should raise exception when trade_count = 0
-        with pytest.raises(Exception, match="No trades found"):
-            await get_global_trade_analytics(mock_db)
+        # Test global analytics - should now return empty analytics when trade_count = 0
+        result = await get_global_trade_analytics(mock_db)
+        assert result["trade_count"] == 0
+        assert result["total_volume"] == "0"
+        assert result["total_value"] == "0"
+        assert result["avg_quantity"] is None
+        assert result["avg_price"] is None
+        assert result["min_price"] is None
+        assert result["max_price"] is None
 
     # Run the async test
     asyncio.run(test_null_values())

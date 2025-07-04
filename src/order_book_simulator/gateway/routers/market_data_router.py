@@ -26,6 +26,30 @@ redis_client = Redis(host="redis", port=6379, decode_responses=True)
 analytics = MarketDataAnalytics(redis_client)
 
 
+@market_data_router.get("/global-trades-analytics")
+async def get_global_trade_analytics_endpoint(
+    since_hours: int = 24, db: AsyncSession = Depends(get_db)
+) -> dict[str, Any]:
+    """
+    Returns trade analytics across all stocks.
+
+    Args:
+        since_hours: Number of hours to look back for analytics.
+        db: The database session.
+
+    Returns:
+        A dictionary containing global trade analytics.
+    """
+    since_time = datetime.now(timezone.utc) - timedelta(hours=since_hours)
+    analytics_result = await get_global_trade_analytics(db, since=since_time)
+
+    return {
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "period_hours": since_hours,
+        "analytics": analytics_result,
+    }
+
+
 @market_data_router.get("/stocks-with-orders")
 async def get_active_stocks(db: AsyncSession = Depends(get_db)) -> dict[str, Any]:
     """
@@ -89,30 +113,6 @@ async def get_all_recent_trades(
         "timestamp": datetime.now(timezone.utc).isoformat(),
         "trades": trades,
         "count": len(trades),
-    }
-
-
-@market_data_router.get("/trades/analytics")
-async def get_global_trade_analytics_endpoint(
-    since_hours: int = 24, db: AsyncSession = Depends(get_db)
-) -> dict[str, Any]:
-    """
-    Returns trade analytics across all stocks.
-
-    Args:
-        since_hours: Number of hours to look back for analytics.
-        db: The database session.
-
-    Returns:
-        A dictionary containing global trade analytics.
-    """
-    since_time = datetime.now(timezone.utc) - timedelta(hours=since_hours)
-    analytics = await get_global_trade_analytics(db, since=since_time)
-
-    return {
-        "timestamp": datetime.now(timezone.utc).isoformat(),
-        "period_hours": since_hours,
-        "analytics": analytics,
     }
 
 
