@@ -30,15 +30,7 @@ def main():
         page_icon="📈",
         layout="wide",
     )
-
-    # Main header
     st.title("Order Book Simulator")
-    st.text(
-        "This is the dashboard for the Order Book Simulator, providing a visual "
-        "representation of the various components of the system."
-    )
-
-    # Sidebar controls
     st.sidebar.header("Controls")
 
     # Connection status indicator
