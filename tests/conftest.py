@@ -195,12 +195,26 @@ def db_session() -> AsyncSession:
             "func.count" in query_str.lower() or "COUNT" in query_str.upper()
         ) and "trade" in query_str.lower():
             mock_row = MagicMock()
-            mock_row.trade_count = 10
-            mock_row.total_volume = 1000.00
-            mock_row.total_value = 150000.00
-            mock_row.avg_price = 150.00
-            mock_row.min_price = 145.00
-            mock_row.max_price = 155.00
+            
+            # Check if this is a global analytics query (no WHERE clause with stock_id)
+            if "stock_id" not in query_str.lower() or "WHERE" not in query_str.upper():
+                # Global analytics - return larger numbers for all stocks
+                mock_row.trade_count = 50
+                mock_row.total_volume = 5000.00
+                mock_row.total_value = 750000.00
+                mock_row.avg_quantity = 100.00
+                mock_row.avg_price = 150.00
+                mock_row.min_price = 100.00
+                mock_row.max_price = 200.00
+            else:
+                # Single stock analytics
+                mock_row.trade_count = 10
+                mock_row.total_volume = 1000.00
+                mock_row.total_value = 150000.00
+                mock_row.avg_price = 150.00
+                mock_row.min_price = 145.00
+                mock_row.max_price = 155.00
+            
             result.first.return_value = mock_row
             return result
 
