@@ -91,7 +91,16 @@ def main():
     else:
         st.sidebar.error("❌ Gateway Disconnected")
 
-    # Main content area - conditional on view mode with auto-refresh
+    # Main content area - check gateway connection first
+    if not gateway_connected:
+        st.error("❌ Gateway connection required. Please check the gateway service.")
+        st.info(
+            "All features require a connection to the gateway service to function "
+            "properly."
+        )
+        return
+
+    # Main content area - conditional on navigation with auto-refresh
     if navigation == "Market Overview":
         if auto_refresh_enabled:
             auto_refresh_fragment = create_auto_refresh_market_overview(
@@ -107,21 +116,13 @@ def main():
         else:
             display_individual_order_book()
     elif navigation == "Trade History":
-        if gateway_connected:
-            if auto_refresh_enabled:
-                auto_refresh_fragment = create_auto_refresh_trade_history(
-                    refresh_interval
-                )
-                auto_refresh_fragment()
-            else:
-                display_trade_history()
+        if auto_refresh_enabled:
+            auto_refresh_fragment = create_auto_refresh_trade_history(refresh_interval)
+            auto_refresh_fragment()
         else:
-            st.error("Gateway connection required to view trade history")
+            display_trade_history()
     elif navigation == "Submit Order":
-        if gateway_connected:
-            create_order_form()
-        else:
-            st.error("Gateway connection required to submit orders")
+        create_order_form()
 
 
 if __name__ == "__main__":
