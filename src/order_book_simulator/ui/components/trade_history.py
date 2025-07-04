@@ -1,3 +1,4 @@
+from datetime import datetime
 from typing import Callable
 
 import pandas as pd
@@ -5,6 +6,7 @@ import streamlit as st
 
 from order_book_simulator.ui.components.api_client import (
     get_all_trades,
+    get_global_trade_analytics,
     get_trades_for_stock,
 )
 from order_book_simulator.ui.components.utils import format_timestamp
@@ -94,47 +96,67 @@ def display_trade_history():
                     display_columns.append("total_amount")
                     column_mapping["total_amount"] = "Total ($)"
 
-                # Get actual total trades from API for overall context
+                # Always get global market data for Trading Activity Summary
+                global_analytics_data = get_global_trade_analytics(since_hours=8760)
                 actual_total_trades = len(trades)  # Default fallback
 
-                if view_mode == "All Stocks":
-                    # Get global trade count from API
-                    from order_book_simulator.ui.components.api_client import (
-                        get_global_trade_analytics,
+                if global_analytics_data and "analytics" in global_analytics_data:
+                    actual_total_trades = global_analytics_data["analytics"].get(
+                        "trade_count", len(trades)
                     )
 
-                    analytics_data = get_global_trade_analytics(since_hours=8760)
-                    if analytics_data and "analytics" in analytics_data:
-                        actual_total_trades = analytics_data["analytics"].get(
-                            "trade_count", len(trades)
-                        )
-                elif view_mode == "Single Stock" and selected_stock:
-                    # Get stock-specific trade count from API
-                    from order_book_simulator.ui.components.api_client import (
-                        get_trade_analytics,
-                    )
-
-                    analytics_data = get_trade_analytics(
-                        selected_stock, since_hours=8760
-                    )
-                    if analytics_data and "analytics" in analytics_data:
-                        actual_total_trades = analytics_data["analytics"].get(
-                            "trade_count", len(trades)
-                        )
+                # For activity rate calculation, get all trades (not just
+                # displayed)
+                all_trades_data = get_all_trades(limit=1000)
+                all_trades = (
+                    all_trades_data.get("trades", []) if all_trades_data else []
+                )
 
                 # Create display DataFrame
                 display_df = df[display_columns].copy()
                 display_df = display_df.rename(columns=column_mapping)
 
-                # Display summary metrics
-                st.subheader("Trade Summary")
+                # Calculate metrics using trades for all stocks - this is
+                # separate to what the user has selected for the display
+                st.subheader("Trading Activity Summary")
+                active_stocks = len(
+                    set(trade["ticker"] for trade in all_trades if "ticker" in trade)
+                )
 
-                # Total trades in its own row
-                st.metric("Total Trades", f"{actual_total_trades:,}")
+                # Calculate market activity rate (trades per minute) using all
+                # trades
+                if all_trades and len(all_trades) > 1:
+                    first_trade_time = datetime.fromisoformat(
+                        all_trades[-1]["trade_time"].replace("Z", "+00:00")
+                    )
+                    last_trade_time = datetime.fromisoformat(
+                        all_trades[0]["trade_time"].replace("Z", "+00:00")
+                    )
+                    time_diff_minutes = (
+                        last_trade_time - first_trade_time
+                    ).total_seconds() / 60
+                    activity_rate = (
+                        len(all_trades) / time_diff_minutes
+                        if time_diff_minutes > 0
+                        else 0
+                    )
+                else:
+                    activity_rate = 0
+
+                # Trade summary metrics in 3x1 grid
+                col1, col2, col3 = st.columns(3)
+                with col1:
+                    st.metric("Total Trades", f"{actual_total_trades:,}")
+                with col2:
+                    st.metric("Active Stocks", f"{active_stocks:,}")
+                with col3:
+                    st.metric("Market Activity", f"{activity_rate:.1f} trades / min")
 
                 # Trade metrics for displayed trades
-                st.subheader(f"Trade Metrics (Last {len(trades)} Trades)")
-
+                st.subheader(
+                    f"Trade Metrics – Last {len(trades)} Trades for "
+                    f"{selected_stock if selected_stock else 'All Stocks'}"
+                )
                 col1, col2, col3, col4 = st.columns(4)
 
                 # Calculate price analytics from displayed trades
