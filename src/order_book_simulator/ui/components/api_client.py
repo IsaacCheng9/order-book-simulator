@@ -227,3 +227,32 @@ def get_trade_analytics(ticker: str, since_hours: int = 24) -> dict | None:
     except Exception as e:
         st.error(f"Error fetching analytics for {ticker}: {e}")
         return None
+
+
+def get_global_trade_analytics(since_hours: int = 24) -> dict | None:
+    """
+    Fetches global trade analytics across all stocks.
+
+    Args:
+        since_hours: Number of hours to look back for analytics
+
+    Returns:
+        Dictionary containing global trade analytics or None if unavailable
+    """
+    try:
+        response = requests.get(
+            f"{GATEWAY_URL}/v1/market-data/trades/analytics",
+            params={"since_hours": since_hours},
+            timeout=5,
+        )
+        if response.status_code == 200:
+            return response.json()
+        elif response.status_code == 404:
+            st.warning("No global analytics found")
+            return None
+        else:
+            st.error(f"Failed to fetch global analytics: {response.status_code}")
+            return None
+    except Exception as e:
+        st.error(f"Error fetching global analytics: {e}")
+        return None
