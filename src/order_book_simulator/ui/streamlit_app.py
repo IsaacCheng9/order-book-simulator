@@ -15,6 +15,10 @@ from order_book_simulator.ui.components.order_book import (
     display_single_stock_order_book,
 )
 from order_book_simulator.ui.components.order_form import create_order_form
+from order_book_simulator.ui.components.trade_history import (
+    create_auto_refresh_trade_history,
+    display_trade_history,
+)
 
 
 def main():
@@ -26,15 +30,7 @@ def main():
         page_icon="📈",
         layout="wide",
     )
-
-    # Main header
     st.title("Order Book Simulator")
-    st.text(
-        "This is the dashboard for the Order Book Simulator, providing a visual "
-        "representation of the various components of the system."
-    )
-
-    # Sidebar controls
     st.sidebar.header("Controls")
 
     # Connection status indicator
@@ -50,6 +46,7 @@ def main():
         [
             "Market Overview",
             "Order Book for Single Stock",
+            "Trade History",
             "Submit Order",
         ],
     )
@@ -62,12 +59,24 @@ def main():
         if stocks_data and stocks_data.get("stocks"):
             stock_options = [stock["ticker"] for stock in stocks_data["stocks"]]
             ticker = st.sidebar.selectbox("Select Stock", stock_options)
+            # Store available stocks in session state for trade history component
+            st.session_state.available_stocks = stock_options
         # Fallback to hardcoded list if API is unavailable
         else:
             ticker = st.sidebar.selectbox(
                 "Select Stock",
                 ["AAPL", "AMZN", "GOOGL", "META", "MSFT", "NVDA", "TSLA"],
             )
+            # Store fallback stocks in session state
+            st.session_state.available_stocks = [
+                "AAPL",
+                "AMZN",
+                "GOOGL",
+                "META",
+                "MSFT",
+                "NVDA",
+                "TSLA",
+            ]
 
     # Auto-refresh controls
     st.sidebar.subheader("Auto-Refresh")
@@ -106,6 +115,17 @@ def main():
             auto_refresh_fragment(ticker)
         else:
             display_single_stock_order_book(ticker)
+    elif view_mode == "Trade History":
+        if gateway_connected:
+            if auto_refresh_enabled:
+                auto_refresh_fragment = create_auto_refresh_trade_history(
+                    refresh_interval
+                )
+                auto_refresh_fragment()
+            else:
+                display_trade_history()
+        else:
+            st.error("Gateway connection required to view trade history")
     elif view_mode == "Submit Order":
         if gateway_connected:
             create_order_form()
