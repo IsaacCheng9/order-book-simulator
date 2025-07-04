@@ -197,3 +197,33 @@ def get_trades_for_stock(ticker: str, limit: int = 100) -> dict | None:
     except Exception as e:
         st.error(f"Error fetching trades for {ticker}: {e}")
         return None
+
+
+def get_trade_analytics(ticker: str, since_hours: int = 24) -> dict | None:
+    """
+    Fetches trade analytics for a specific stock.
+
+    Args:
+        ticker: Stock ticker symbol
+        since_hours: Number of hours to look back for analytics
+
+    Returns:
+        Dictionary containing trade analytics or None if unavailable
+    """
+    try:
+        response = requests.get(
+            f"{GATEWAY_URL}/v1/market-data/trades/{ticker}/analytics",
+            params={"since_hours": since_hours},
+            timeout=5,
+        )
+        if response.status_code == 200:
+            return response.json()
+        elif response.status_code == 404:
+            st.warning(f"No analytics found for {ticker}")
+            return None
+        else:
+            st.error(f"Failed to fetch analytics for {ticker}: {response.status_code}")
+            return None
+    except Exception as e:
+        st.error(f"Error fetching analytics for {ticker}: {e}")
+        return None
