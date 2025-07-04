@@ -12,7 +12,7 @@ def create_order_form() -> None:
     """
     Creates a manual order submission form with validation.
     """
-    st.subheader("Submit Order")
+    st.header("Submit Order")
 
     # Get available stocks for the dropdown
     stocks_data = get_all_stocks()
