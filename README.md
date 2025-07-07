@@ -97,9 +97,10 @@ docker compose up --build
 From there, you can interact with the services:
 
 - **Streamlit UI**: [http://localhost:8501](http://localhost:8501) - Interactive
-  dashboard
+  dashboard for market monitoring, analysis, and user-friendly order submission
 - **FastAPI Documentation**:
   [http://localhost:8000/docs](http://localhost:8000/docs) - REST API interface
+  for programmatic, full-featured access to the order book services
 
 ### Resetting the Order Book Services
 
