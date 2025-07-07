@@ -41,16 +41,16 @@ data updates in real-time.
   market statistics
 - **Advanced analytics** – VWAP calculations, trade metrics, market activity
   tracking, and historical data analysis
-- **Interactive web-based Streamlit dashboard** for market monitoring, analysis,
+- **Interactive web-based Streamlit dashboard** – market monitoring, analysis,
   and order submission
-- **REST API via FastAPI** for full programmatic access with comprehensive
+- **REST API via FastAPI** – full programmatic access with comprehensive
   documentation
-- **Market simulation tool** with automated order generation for demonstration
+- **Market simulation tool** – automated order generation for demonstration
   purposes
-- **Highly performant, scalable architecture** with Redis caching and Kafka
+- **Highly performant, scalable architecture** – Redis caching and Kafka
   messaging for real-time processing
-- **Containerised deployment** with Docker Compose for easy deployment and local
-  development
+- **Containerised deployment** – easy deployment and local development via
+  Docker Compose
 
 ## Components
 
