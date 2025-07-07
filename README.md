@@ -4,9 +4,34 @@
 [![Test](https://github.com/IsaacCheng9/order-book-simulator/actions/workflows/test.yml/badge.svg)](https://github.com/IsaacCheng9/order-book-simulator/actions/workflows/test.yml)
 
 An equity order matching engine and market data system built in Python, designed
-to simulate real-world US stock exchange trading mechanics. Processes limit
-orders with price-time priority, executes trades, and provides market data
-updates in real-time.
+to simulate real-world US stock exchange trading mechanics. Processes limit and
+market orders with price-time priority, executes trades, and provides market
+data updates in real-time.
+
+## Screenshots
+
+![Market Overview](./screenshots/market_overview.png)
+![Individual Order Book](./screenshots/individual_order_book.png)
+![Trade History (All Stocks)](./screenshots/trade_history_all_stocks.png)
+![Submit Limit Order](./screenshots/submit_limit_order.png)
+
+<!-- markdownlint-disable-next-line MD033 -->
+<details>
+<!-- markdownlint-disable-next-line MD033 -->
+<summary>Trade History (Single Stock)</summary>
+
+![Trade History (Single Stock)](./screenshots/trade_history_single_stock.png)
+
+</details>
+
+<!-- markdownlint-disable-next-line MD033 -->
+<details>
+<!-- markdownlint-disable-next-line MD033 -->
+<summary>Submit Market Order</summary>
+
+![Submit Market Order](./screenshots/submit_market_order.png)
+
+</details>
 
 ## Components
 
