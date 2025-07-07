@@ -33,6 +33,25 @@ data updates in real-time.
 
 </details>
 
+## Key Features
+
+- **Order matching engine** – price-time priority matching for limit and market
+  orders
+- **Real-time market data** – live order book updates, trade analytics, and
+  market statistics
+- **Advanced analytics** – VWAP calculations, trade metrics, market activity
+  tracking, and historical data analysis
+- **Interactive web-based Streamlit dashboard** for market monitoring, analysis,
+  and order submission
+- **REST API via FastAPI** for full programmatic access with comprehensive
+  documentation
+- **Market simulation tool** with automated order generation for demonstration
+  purposes
+- **Highly performant, scalable architecture** with Redis caching and Kafka
+  messaging for real-time processing
+- **Containerised deployment** with Docker Compose for easy deployment and local
+  development
+
 ## Components
 
 ### Order Book Services
@@ -96,10 +115,10 @@ docker compose up --build
 
 From there, you can interact with the services:
 
-- **Streamlit UI**: [http://localhost:8501](http://localhost:8501) - Interactive
+- **Streamlit UI**: [http://localhost:8501](http://localhost:8501) – Interactive
   dashboard for market monitoring, analysis, and user-friendly order submission
 - **FastAPI Documentation**:
-  [http://localhost:8000/docs](http://localhost:8000/docs) - REST API interface
+  [http://localhost:8000/docs](http://localhost:8000/docs) – REST API interface
   for programmatic, full-featured access to the order book services
 
 ### Resetting the Order Book Services
