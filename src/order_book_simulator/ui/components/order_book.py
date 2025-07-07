@@ -11,7 +11,7 @@ def display_individual_order_book() -> None:
     """
     Displays the order book for a single stock with stock selection controls.
     """
-    st.header("Individual Order Book View")
+    st.header("Individual Order Book")
 
     # Stock selection controls
     available_stocks = st.session_state.get("available_stocks", [])
