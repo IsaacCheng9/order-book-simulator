@@ -76,15 +76,15 @@ shows how to use the `MarketSimulator` class to simulate market activity.
 - **Streamlit**: UI for the interactive web dashboard
 - **Docker**: Containerisation and deployment
 
-## Installing Dependencies
+## Usage
+
+### Installing Dependencies
 
 Run the following command from the [project root](./) directory:
 
 ```bash
 uv sync --all-extras --dev
 ```
-
-## Usage
 
 ### Running the Order Book Services
 
