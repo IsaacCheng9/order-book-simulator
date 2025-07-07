@@ -49,6 +49,8 @@ The system consists of four main services:
   priority
 - **Market Data Service**: Manages market data dissemination and analytics
 - **Database**: Stores order and trade history
+- **Streamlit UI**: Interactive web dashboard providing real-time market data
+  visualisation, order book analysis, trade history, and order submission
 
 ### Market Simulator
 
@@ -71,6 +73,7 @@ shows how to use the `MarketSimulator` class to simulate market activity.
 - **Kafka**: Message broker for order flow and market data
 - **PostgreSQL**: Persistent storage for orders and trades
 - **Redis**: Caching for real-time market data
+- **Streamlit**: UI for the interactive web dashboard
 - **Docker**: Containerisation and deployment
 
 ## Installing Dependencies
@@ -91,8 +94,12 @@ Use Docker Compose to build and run the services locally:
 docker compose up --build
 ```
 
-From there, you can interact with the FastAPI service at:
-[http://localhost:8000/docs](http://localhost:8000/docs)
+From there, you can interact with the services:
+
+- **Streamlit UI**: [http://localhost:8501](http://localhost:8501) - Interactive
+  dashboard
+- **FastAPI Documentation**:
+  [http://localhost:8000/docs](http://localhost:8000/docs) - REST API interface
 
 ### Resetting the Order Book Services
 
