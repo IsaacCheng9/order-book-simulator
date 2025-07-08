@@ -3,10 +3,54 @@
 [![Ruff](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/ruff/main/assets/badge/v2.json)](https://github.com/astral-sh/ruff)
 [![Test](https://github.com/IsaacCheng9/order-book-simulator/actions/workflows/test.yml/badge.svg)](https://github.com/IsaacCheng9/order-book-simulator/actions/workflows/test.yml)
 
-An equity order matching engine and market data system built in Python, designed
-to simulate real-world US stock exchange trading mechanics. Processes limit
-orders with price-time priority, executes trades, and provides market data
-updates in real-time.
+An equity order matching engine simulating US stock exchange mechanics with an
+interactive dashboard, built in Python. Features price-time priority matching,
+automated trade execution, real-time market data processing, advanced analytics,
+and full REST API access via FastAPI.
+
+## Screenshots
+
+![Market Overview](./screenshots/market_overview.png)
+![Individual Order Book](./screenshots/individual_order_book.png)
+![Trade History (All Stocks)](./screenshots/trade_history_all_stocks.png)
+![Submit Limit Order](./screenshots/submit_limit_order.png)
+
+<!-- markdownlint-disable-next-line MD033 -->
+<details>
+<!-- markdownlint-disable-next-line MD033 -->
+<summary>Trade History (Single Stock)</summary>
+
+![Trade History (Single Stock)](./screenshots/trade_history_single_stock.png)
+
+</details>
+
+<!-- markdownlint-disable-next-line MD033 -->
+<details>
+<!-- markdownlint-disable-next-line MD033 -->
+<summary>Submit Market Order</summary>
+
+![Submit Market Order](./screenshots/submit_market_order.png)
+
+</details>
+
+## Key Features
+
+- **Order matching engine** – price-time priority matching for limit and market
+  orders
+- **Real-time market data** – live order book updates, trade analytics, and
+  market statistics
+- **Advanced analytics** – VWAP calculations, trade metrics, market activity
+  tracking, and historical data analysis
+- **Interactive web-based Streamlit dashboard** – market monitoring, analysis,
+  and order submission
+- **REST API via FastAPI** – full programmatic access with comprehensive
+  documentation
+- **Market simulation tool** – automated order generation for demonstration
+  purposes
+- **Highly performant, scalable architecture** – Redis caching and Kafka
+  messaging for real-time processing
+- **Containerised deployment** – easy deployment and local development via
+  Docker Compose
 
 ## Components
 
@@ -24,6 +68,8 @@ The system consists of four main services:
   priority
 - **Market Data Service**: Manages market data dissemination and analytics
 - **Database**: Stores order and trade history
+- **Streamlit UI**: Interactive web dashboard providing real-time market data
+  visualisation, order book analysis, trade history, and order submission
 
 ### Market Simulator
 
@@ -46,17 +92,18 @@ shows how to use the `MarketSimulator` class to simulate market activity.
 - **Kafka**: Message broker for order flow and market data
 - **PostgreSQL**: Persistent storage for orders and trades
 - **Redis**: Caching for real-time market data
+- **Streamlit**: UI for the interactive web dashboard
 - **Docker**: Containerisation and deployment
 
-## Installing Dependencies
+## Usage
+
+### Installing Dependencies
 
 Run the following command from the [project root](./) directory:
 
 ```bash
 uv sync --all-extras --dev
 ```
-
-## Usage
 
 ### Running the Order Book Services
 
@@ -66,8 +113,13 @@ Use Docker Compose to build and run the services locally:
 docker compose up --build
 ```
 
-From there, you can interact with the FastAPI service at:
-[http://localhost:8000/docs](http://localhost:8000/docs)
+From there, you can interact with the services:
+
+- **Streamlit UI**: [http://localhost:8501](http://localhost:8501) – Interactive
+  dashboard for market monitoring, analysis, and user-friendly order submission
+- **FastAPI Documentation**:
+  [http://localhost:8000/docs](http://localhost:8000/docs) – REST API interface
+  for programmatic, full-featured access to the order book services
 
 ### Resetting the Order Book Services
 
