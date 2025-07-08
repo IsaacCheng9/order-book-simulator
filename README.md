@@ -3,10 +3,10 @@
 [![Ruff](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/ruff/main/assets/badge/v2.json)](https://github.com/astral-sh/ruff)
 [![Test](https://github.com/IsaacCheng9/order-book-simulator/actions/workflows/test.yml/badge.svg)](https://github.com/IsaacCheng9/order-book-simulator/actions/workflows/test.yml)
 
-An equity order matching engine and market data system built in Python, designed
-to simulate real-world US stock exchange trading mechanics. Processes limit and
-market orders with price-time priority, executes trades, and provides market
-data updates in real-time.
+An equity order matching engine simulating US stock exchange mechanics with an
+interactive dashboard, built in Python. Features price-time priority matching,
+automated trade execution, real-time market data processing, advanced analytics,
+and full REST API access via FastAPI.
 
 ## Screenshots
 
