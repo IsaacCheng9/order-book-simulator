@@ -220,11 +220,23 @@ async def get_market_data(
     return {
         "timestamp": datetime.now(timezone.utc).isoformat(),
         "ticker": ticker,
-        "bid_depth": str(depth_stats["bid_depth"]),
-        "ask_depth": str(depth_stats["ask_depth"]),
-        "spread": str(depth_stats["spread"]) if depth_stats["spread"] else None,
-        "mid_price": str(depth_stats["mid_price"])
-        if depth_stats["mid_price"]
-        else None,
-        "vwap_1min": str(vwap) if vwap else None,
+        "bid_depth": (
+            str(depth_stats["bid_depth"])
+            if depth_stats["bid_depth"] is not None
+            else None
+        ),
+        "ask_depth": (
+            str(depth_stats["ask_depth"])
+            if depth_stats["ask_depth"] is not None
+            else None
+        ),
+        "spread": (
+            str(depth_stats["spread"]) if depth_stats["spread"] is not None else None
+        ),
+        "mid_price": (
+            str(depth_stats["mid_price"])
+            if depth_stats["mid_price"] is not None
+            else None
+        ),
+        "vwap_1min": str(vwap) if vwap is not None else None,
     }

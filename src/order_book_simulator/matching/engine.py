@@ -75,9 +75,9 @@ class MatchingEngine:
         # Add timestamp of when the order was processed.
         order_message["created_at"] = datetime.now(timezone.utc)
         trades = order_book.add_order(order_message)
-        
+
         # Cache the order book state
         order_book_cache.set_order_book(stock_id, order_book.get_full_snapshot())
-        
+
         # Always publish market data updates, even if no trades occurred.
         await self._publish_market_data(stock_id, order_book, trades or [])

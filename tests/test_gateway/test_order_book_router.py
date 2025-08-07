@@ -55,7 +55,7 @@ def test_get_order_book_for_nonexistent_stock(test_client):
 
 def test_get_all_order_books_empty(test_client):
     """Tests getting all order books when none exist."""
-    response = test_client.get("v1/order-book/collection")
+    response = test_client.get("/v1/order-book/collection")
     assert response.status_code == 200
     data = response.json()
     assert "timestamp" in data

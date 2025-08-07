@@ -55,8 +55,8 @@ class StockLoader:
                         "id": uuid.uuid4(),
                         "ticker": ticker,
                         "company_name": row["Name"],
-                        "min_order_size": Decimal("1"),
-                        "max_order_size": Decimal("1_000_000"),
+                        "min_order_size": Decimal(1),
+                        "max_order_size": Decimal(1_000_000),
                         "price_precision": price_precision,
                     }
                     logger.info(

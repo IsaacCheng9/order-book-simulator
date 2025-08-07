@@ -51,6 +51,8 @@ class OrderBook:
         )
         # Market orders have no price as they match against the best available.
         order_type = incoming_order["type"]
+        if isinstance(order_type, str):
+            order_type = OrderType(order_type)
         if order_type == OrderType.MARKET and price is not None:
             raise ValueError("Market orders should not have a price.")
         if order_type != OrderType.MARKET and price is None:
@@ -160,7 +162,16 @@ class OrderBook:
         Returns:
             A list of trades that were executed.
         """
-        is_buy: bool = order["side"] == OrderSide.BUY
+        # Coerce the order entries to the correct types.
+        side = order["side"]
+        if isinstance(side, str):
+            side = OrderSide(side)
+            order["side"] = side
+        order_type = order["type"]
+        if isinstance(order_type, str):
+            order_type = OrderType(order_type)
+            order["type"] = order_type
+        is_buy = side == OrderSide.BUY
         trades: list[dict[str, Any]] = []
 
         # Match against the opposite side of the book if prices overlap.
@@ -172,7 +183,7 @@ class OrderBook:
 
         # If it's a limit order and there's remaining quantity, add it to the
         # book.
-        if order["type"] == OrderType.LIMIT and remaining_quantity > 0:
+        if order_type == OrderType.LIMIT and remaining_quantity > 0:
             price = Decimal(str(order["price"]))
             entry = OrderBookEntry(
                 id=order["id"],
