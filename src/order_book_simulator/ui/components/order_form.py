@@ -49,10 +49,10 @@ def create_order_form() -> None:
             # Quantity
             quantity = st.number_input(
                 "Quantity",
-                min_value=0.01,
-                value=1.0,
-                step=0.01,
-                format="%.2f",
+                min_value=1,
+                value=1,
+                step=1,
+                format="%.0f",
                 help="Number of shares to trade",
             )
 
