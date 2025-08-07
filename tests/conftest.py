@@ -259,6 +259,7 @@ def order_book() -> OrderBook:
 def mock_redis():
     """Creates a mock Redis instance for testing."""
     mock_data = {}
+    streams: dict[str, list[tuple[str, dict]]] = {}
 
     class MockRedis:
         def set(self, key: str, value: str) -> None:
@@ -278,6 +279,42 @@ def mock_redis():
         def exists(self, key: str) -> bool:
             return key in mock_data
 
+        async def xadd(
+            self,
+            key: str,
+            fields: dict,
+            maxlen: int | None = None,
+            approximate: bool | None = None,
+            **kwargs,
+        ) -> None:
+            ts = datetime.fromisoformat(fields["timestamp"]).timestamp()
+            entry_id = f"{int(ts * 1000)}-0"
+            streams.setdefault(key, []).append((entry_id, fields))
+            if maxlen and len(streams[key]) > maxlen:
+                streams[key] = streams[key][-maxlen:]
+
+        async def xrevrange(
+            self,
+            key: str,
+            max: str = "+",
+            min: str = "-",
+            count: int = 1,
+            **kwargs,
+        ):
+            return list(reversed(streams.get(key, [])))[:count]
+
+        async def xrange(self, key: str, min: str, max: str, **kwargs):
+            return list(streams.get(key, []))
+
+        async def xread(
+            self, stream_dict: dict[str, str], count=None, block=None, **kwargs
+        ):
+            key, last_id = next(iter(stream_dict.items()))
+            entries = [
+                (eid, data) for eid, data in streams.get(key, []) if eid > last_id
+            ]
+            return [] if not entries else [(key, entries[: count or len(entries)])]
+
     order_book_cache.redis = MockRedis()  # type: ignore
     yield
     mock_data.clear()
@@ -291,3 +328,8 @@ async def create_test_database():
     yield
     async with test_engine.begin() as conn:
         await conn.run_sync(Base.metadata.drop_all)
+
+
+@pytest.fixture
+def redis_stream_client():
+    return order_book_cache.redis
