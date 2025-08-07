@@ -119,8 +119,10 @@ class MarketDataAnalytics:
             df.filter(pl.col("last_trade_price") != "")
             .with_columns(
                 [
-                    pl.col("last_trade_price").cast(pl.Decimal).alias("price"),
-                    pl.col("last_trade_quantity").cast(pl.Decimal).alias("quantity"),
+                    pl.col("last_trade_price").cast(pl.Decimal(38, 10)).alias("price"),
+                    pl.col("last_trade_quantity")
+                    .cast(pl.Decimal(38, 10))
+                    .alias("quantity"),
                 ]
             )
             .with_columns((pl.col("price") * pl.col("quantity")).alias("price_volume"))
