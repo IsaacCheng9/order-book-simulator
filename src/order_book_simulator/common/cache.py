@@ -52,8 +52,15 @@ class OrderBookCache:
             The order book snapshot if it exists, None otherwise.
         """
         key = self._get_order_book_key(stock_id)
-        data = self.redis.get(key)
-        return json.loads(data) if data else None  # type: ignore
+        raw_data = self.redis.get(key)
+        if not raw_data:
+            return None
+        data = (
+            raw_data.decode()
+            if isinstance(raw_data, (bytes, bytearray))
+            else str(raw_data)
+        )
+        return json.loads(data)
 
     def get_all_order_books(self) -> dict[str, dict[str, Any]]:
         """
@@ -63,16 +70,20 @@ class OrderBookCache:
             A dictionary of order book snapshots keyed by stock ID.
         """
         keys = self.redis.keys("order_book:*")
-        result = {}
+        result: dict[str, dict[str, Any]] = {}
         for key in keys:  # type: ignore
-            # Handle string keys from mock Redis
             stock_id = (
                 key.split(":")[-1]
                 if isinstance(key, str)
                 else key.decode().split(":")[-1]
             )
-            data = self.redis.get(key)
-            if data:
+            raw_data = self.redis.get(key)
+            if raw_data:
+                data = (
+                    raw_data.decode()
+                    if isinstance(raw_data, (bytes, bytearray))
+                    else str(raw_data)
+                )
                 result[stock_id] = json.loads(data)  # type: ignore
         return dict(sorted(result.items()))
 
@@ -81,10 +92,25 @@ class OrderBookCache:
         return f"trades:{stock_id}"
 
     def get_trades(self, stock_id: UUID) -> list[dict]:
-        """Gets trade history for a stock."""
+        """
+        Gets trade history for a stock.
+
+        Args:
+            stock_id: The stock ID.
+
+        Returns:
+            The trade history for the stock.
+        """
         key = self._get_trades_key(stock_id)
-        data = self.redis.get(key)
-        return json.loads(data.decode()) if data else []  # type: ignore
+        raw_data = self.redis.get(key)
+        if not raw_data:
+            return []
+        data = (
+            raw_data.decode()
+            if isinstance(raw_data, (bytes, bytearray))
+            else str(raw_data)
+        )
+        return json.loads(data)
 
     def set_trades(self, stock_id: UUID, trades: list[dict]) -> None:
         """Stores trade history for a stock."""
