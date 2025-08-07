@@ -21,7 +21,7 @@ async def kafka_health() -> dict[str, str]:
     """Checks the Kafka producer's connectivity status."""
     status = {
         "kafka_producer": "unhealthy",
-        "timestamp": datetime.now().isoformat(),
+        "timestamp": datetime.now(timezone.utc).isoformat(),
     }
 
     if not app_state.producer:
