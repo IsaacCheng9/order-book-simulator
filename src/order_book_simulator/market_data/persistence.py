@@ -35,9 +35,7 @@ async def persist_market_snapshot(
     )
 
 
-async def persist_order(
-    order: dict[str, Any], db: AsyncSession
-) -> None:
+async def persist_order(order: dict[str, Any], db: AsyncSession) -> None:
     """
     Persists an order to PostgreSQL.
 
