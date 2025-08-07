@@ -13,8 +13,15 @@ jobs:
     steps:
       - uses: actions/checkout@v3
 
-      - name: Run Python code formatting with Ruff
-        uses: chartboost/ruff-action@main
+      - name: Ruff lint (fix)
+        uses: astral-sh/ruff-action@v3
+        with:
+          args: check --fix
+
+      - name: Ruff format
+        uses: astral-sh/ruff-action@v3
+        with:
+          args: format
 
       - name: Commit changes made by Ruff
         uses: stefanzweifel/git-auto-commit-action@master
