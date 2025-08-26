@@ -71,8 +71,8 @@ def display_trade_history():
                     df["Date"] = df["trade_time"].dt.strftime("%Y-%m-%d")
 
                 # Select and rename columns for display
-                display_columns = []
-                column_mapping = {}
+                display_columns: list[str] = []
+                column_mapping: dict[str, str] = {}
 
                 if "ticker" in df.columns:
                     display_columns.append("ticker")
@@ -114,7 +114,9 @@ def display_trade_history():
 
                 # Create display DataFrame
                 display_df = df[display_columns].copy()
-                display_df = display_df.rename(columns=column_mapping)
+                display_df.columns = [
+                    column_mapping.get(c, c) for c in display_df.columns
+                ]
 
                 # Calculate metrics using trades for all stocks - this is
                 # separate to what the user has selected for the display
