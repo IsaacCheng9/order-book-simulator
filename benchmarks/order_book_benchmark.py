@@ -1,3 +1,10 @@
+"""
+A benchmark harness for the order book.
+
+This can be used to measure the performance of the order book under various
+conditions and before / after changes to the code implementation.
+"""
+
 import time
 from datetime import datetime, timezone
 from decimal import Decimal
@@ -8,6 +15,16 @@ from order_book_simulator.matching.order_book import OrderBook
 
 
 def create_test_order(price: Decimal, side: OrderSide = OrderSide.BUY) -> dict:
+    """
+    Creates a test order with the specified price and side.
+
+    Args:
+        price: The price of the order.
+        side: The side of the order.
+
+    Returns:
+        A dictionary representing the test order.
+    """
     return {
         "id": uuid4(),
         "price": price,
@@ -19,6 +36,16 @@ def create_test_order(price: Decimal, side: OrderSide = OrderSide.BUY) -> dict:
 
 
 def benchmark_insertion(num_orders: int = 10_000) -> float:
+    """
+    Benchmarks the insertion of buy orders into the order book with varying
+    prices.
+
+    Args:
+        num_orders: The number of orders to insert.
+
+    Returns:
+        The number of orders processed per second.
+    """
     book = OrderBook(uuid4())
     orders = [
         create_test_order(
@@ -43,6 +70,16 @@ def benchmark_insertion(num_orders: int = 10_000) -> float:
 
 
 def benchmark_matching(num_orders: int = 10_000) -> float:
+    """
+    Benchmarks the matching logic of the order book by inserting matching buy
+    and sell orders into the order book.
+
+    Args:
+        num_orders: The number of orders to insert.
+
+    Returns:
+        The number of orders processed per second.
+    """
     book = OrderBook(uuid4())
     price = Decimal(100)
     # Create alternating buy and sell orders so they match against each other.
@@ -69,6 +106,17 @@ def benchmark_matching(num_orders: int = 10_000) -> float:
 
 
 def benchmark_deep_book(num_levels: int = 1000, orders_per_level: int = 100) -> float:
+    """
+    Benchmarks the insertion of buy orders into a deep order book (many price
+    levels).
+
+    Args:
+        num_levels: The number of price levels to insert.
+        orders_per_level: The number of orders to insert per price level.
+
+    Returns:
+        The number of orders processed per second.
+    """
     book = OrderBook(uuid4())
     total_orders = num_levels * orders_per_level
     orders = [
