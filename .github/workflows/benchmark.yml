@@ -1,0 +1,45 @@
+name: Benchmark
+
+on:
+  push:
+  workflow_dispatch:
+
+jobs:
+  benchmark:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version:
+          - "3.13.x"
+
+    steps:
+      - uses: actions/checkout@main
+
+      - name: Switch to current branch
+        run: git checkout ${{ env.BRANCH }}
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@main
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@main
+
+      - name: Install the project
+        run: uv sync --all-extras --dev
+
+      - name: Run order book benchmark
+        run: |
+          echo "=== Order Book Benchmark ===" | tee benchmark_results.txt
+          echo "Commit: ${{ github.sha }}" | tee -a benchmark_results.txt
+          echo "Date: $(date -u)" | tee -a benchmark_results.txt
+          echo "" | tee -a benchmark_results.txt
+          uv run python -m benchmarks.order_book_benchmark | tee -a benchmark_results.txt
+
+      - name: Upload benchmark results
+        uses: actions/upload-artifact@v4
+        with:
+          name: benchmark-results-${{ github.sha }}
+          path: benchmark_results.txt
+          retention-days: 90
