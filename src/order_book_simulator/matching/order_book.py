@@ -2,6 +2,8 @@ from decimal import Decimal
 from typing import Any
 from uuid import UUID
 
+from sortedcontainers import SortedDict
+
 from order_book_simulator.common.models import (
     OrderBookEntry,
     OrderSide,
@@ -17,16 +19,16 @@ class OrderBook:
 
     def __init__(self, stock_id: UUID):
         self.stock_id = stock_id
-        self.bids: dict[Decimal, PriceLevel] = {}
-        self.asks: dict[Decimal, PriceLevel] = {}
-        self._bid_orders: list[OrderBookEntry] = []
-        self._ask_orders: list[OrderBookEntry] = []
+        self.bid_levels: SortedDict[Decimal, PriceLevel] = SortedDict(
+            lambda x: -x  # type: ignore
+        )
+        self.ask_levels: SortedDict[Decimal, PriceLevel] = SortedDict()
+        self.order_to_price_level: dict[UUID, Decimal] = {}
 
     def _match_orders(
         self,
         incoming_order: dict[str, Any],
-        resting_orders: list[OrderBookEntry],
-        aggregated_levels: dict[Decimal, PriceLevel],
+        opposing_levels: SortedDict[Decimal, PriceLevel],
         is_buy: bool,
     ) -> tuple[list[dict], Decimal]:
         """
@@ -34,8 +36,7 @@ class OrderBook:
 
         Args:
             incoming_order: The order attempting to match.
-            resting_orders: The list of orders to match against.
-            levels: The price level aggregations to update.
+            opposing_levels: The price levels to match against.
             is_buy: True if the incoming order is a buy order.
 
         Returns:
@@ -44,63 +45,68 @@ class OrderBook:
         trades: list[dict[str, Any]] = []
         remaining_quantity = Decimal(str(incoming_order["quantity"]))
         # May not have a price if it's a market order.
-        price: Decimal | None = (
+        limit_price: Decimal | None = (
             Decimal(str(incoming_order["price"]))
             if incoming_order.get("price") is not None
             else None
         )
-        # Market orders have no price as they match against the best available.
+
+        # Only limit orders should have a price.
         order_type = incoming_order["type"]
         if isinstance(order_type, str):
             order_type = OrderType(order_type)
-        if order_type == OrderType.MARKET and price is not None:
+        if order_type == OrderType.MARKET and limit_price is not None:
             raise ValueError("Market orders should not have a price.")
-        if order_type != OrderType.MARKET and price is None:
+        if order_type == OrderType.LIMIT and limit_price is None:
             raise ValueError("Limit orders must have a price.")
 
-        # Iterate on a copy of the list so we can edit the original list.
-        for resting_order in resting_orders[:]:
-            if remaining_quantity <= 0:
+        # Track the price levels that need to be removed after matching.
+        levels_to_remove: list[Decimal] = []
+
+        for price, level in opposing_levels.items():
+            if remaining_quantity <= Decimal(0):
                 break
 
-            # For market orders, match against any price.
-            # For limit orders, match if their buy order is greater than or
-            # equal to the lowest sell, or their sell order is less than or
-            # equal to the highest buy.
-            if (
-                order_type == OrderType.MARKET
-                or (is_buy and price and resting_order.price <= price)
-                or (not is_buy and price and resting_order.price >= price)
-            ):
+            # Check if the price level can match.
+            if limit_price:
+                if is_buy and price > limit_price:
+                    break
+                if not is_buy and price < limit_price:
+                    break
+
+            # Match against orders at this price level (FIFO via dict order).
+            orders_to_remove: list[UUID] = []
+            for order_id, resting_order in level.orders.items():
+                if remaining_quantity <= Decimal(0):
+                    break
+
+                # Match the maximum quantity possible.
                 match_quantity = min(remaining_quantity, resting_order.quantity)
                 remaining_quantity -= match_quantity
-
-                # Record the trade.
+                resting_order.quantity -= match_quantity
                 trade = {
-                    "price": resting_order.price,
+                    "price": price,
                     "quantity": match_quantity,
-                    "buyer_order_id": incoming_order["id"]
-                    if is_buy
-                    else resting_order.id,
-                    "seller_order_id": incoming_order["id"]
-                    if not is_buy
-                    else resting_order.id,
+                    "buyer_order_id": incoming_order["id"] if is_buy else order_id,
+                    "seller_order_id": order_id if is_buy else incoming_order["id"],
                     "stock_id": self.stock_id,
                 }
                 trades.append(trade)
+                # If the resting order has been filled, remove it later.
+                if resting_order.quantity == Decimal(0):
+                    orders_to_remove.append(order_id)
 
-                # Update the resting order and level with the remaining
-                # quantity.
-                aggregated_level = aggregated_levels[resting_order.price]
-                aggregated_level.quantity -= match_quantity
-                resting_order.quantity -= match_quantity
-                if resting_order.quantity == 0:
-                    resting_orders.remove(resting_order)
-                    # Reduce the order count by 1, and remove it if there are
-                    # no orders left at this price.
-                    aggregated_level.order_count -= 1
-                    if aggregated_level.quantity == 0:
-                        del aggregated_levels[resting_order.price]
+            # Remove filled orders from level and order index.
+            for order_id in orders_to_remove:
+                del level.orders[order_id]
+                del self.order_to_price_level[order_id]
+            # Mark empty price levels for removal.
+            if not level.orders:
+                levels_to_remove.append(price)
+
+        # Remove empty price levels.
+        for price_level in levels_to_remove:
+            del opposing_levels[price_level]
 
         return trades, remaining_quantity
 
@@ -175,11 +181,8 @@ class OrderBook:
         trades: list[dict[str, Any]] = []
 
         # Match against the opposite side of the book if prices overlap.
-        opposing_orders = self._ask_orders if is_buy else self._bid_orders
-        opposing_aggregated_levels = self.asks if is_buy else self.bids
-        trades, remaining_quantity = self._match_orders(
-            order, opposing_orders, opposing_aggregated_levels, is_buy
-        )
+        opposing_orders = self.ask_levels if is_buy else self.bid_levels
+        trades, remaining_quantity = self._match_orders(order, opposing_orders, is_buy)
 
         # If it's a limit order and there's remaining quantity, add it to the
         # book.
@@ -228,7 +231,7 @@ class OrderBook:
                 }
                 # Sort bids from high to low.
                 for price, level in sorted(
-                    self.bids.items(),
+                    self.bid_levels.items(),
                     key=lambda x: x[0],
                     reverse=True,
                 )
@@ -241,7 +244,7 @@ class OrderBook:
                 }
                 # Sort asks from low to high.
                 for price, level in sorted(
-                    self.asks.items(),
+                    self.ask_levels.items(),
                     key=lambda x: x[0],
                 )
             ],
