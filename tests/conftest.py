@@ -1,4 +1,5 @@
 from datetime import datetime, timezone
+from decimal import Decimal
 from unittest.mock import AsyncMock, MagicMock
 from uuid import UUID, uuid4
 
@@ -7,6 +8,12 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 from starlette.testclient import TestClient
 
 from order_book_simulator.common.cache import order_book_cache
+from order_book_simulator.common.models import (
+    OrderBookEntry,
+    OrderSide,
+    OrderType,
+    PriceLevel,
+)
 from order_book_simulator.database.connection import get_db
 from order_book_simulator.database.db_models import Base
 from order_book_simulator.gateway.app import app, app_state
@@ -333,3 +340,27 @@ async def create_test_database():
 @pytest.fixture
 def redis_stream_client():
     return order_book_cache.redis
+
+
+def create_price_level(price: Decimal, quantity: Decimal) -> PriceLevel:
+    """
+    Creates a PriceLevel with a single dummy order for the given quantity.
+
+    Args:
+        price: The price of the price level.
+        quantity: The quantity of the price level.
+
+    Returns:
+        A PriceLevel object with a single dummy order for the given quantity.
+    """
+    level = PriceLevel(price=price)
+    dummy_order = OrderBookEntry(
+        id=uuid4(),
+        order_type=OrderType.LIMIT,
+        side=OrderSide.BUY,
+        quantity=quantity,
+        price=price,
+        entry_time=0,
+    )
+    level.orders[dummy_order.id] = dummy_order
+    return level
