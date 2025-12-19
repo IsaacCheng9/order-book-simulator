@@ -24,7 +24,9 @@ class OrderBook:
             lambda x: -x  # type: ignore
         )
         self.ask_levels: SortedDict[Decimal, PriceLevel] = SortedDict()
-        self.order_to_price_level: dict[UUID, Decimal] = {}
+        # Map the order ID to the order object for O(1) look-ups, which enables
+        # us to fetch order details and cancel / modify orders efficiently.
+        self.order_id_to_order: dict[UUID, OrderBookEntry] = {}
 
     def _match_orders(
         self,
@@ -97,7 +99,7 @@ class OrderBook:
             # Remove filled orders from level and order index.
             for order_id in orders_to_remove:
                 del level.orders[order_id]
-                del self.order_to_price_level[order_id]
+                del self.order_id_to_order[order_id]
             # Mark empty price levels for removal.
             if not level.orders:
                 levels_to_remove.append(price)
@@ -157,12 +159,12 @@ class OrderBook:
 
             # Get or create the price level.
             if price not in price_levels:
-                price_levels[price] = PriceLevel(Decimal(price))
+                price_levels[price] = PriceLevel(price)
             price_level = price_levels[price]
 
             # Add the order to the price level and update the index.
             price_level.orders[incoming_order.id] = incoming_order
-            self.order_to_price_level[incoming_order.id] = price
+            self.order_id_to_order[incoming_order.id] = incoming_order
 
         return [
             {
