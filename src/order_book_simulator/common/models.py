@@ -69,8 +69,10 @@ class OrderBookEntry:
     """
 
     id: UUID
-    price: Decimal
+    order_type: OrderType
+    side: OrderSide
     quantity: Decimal
+    price: Decimal | None
     # The time the order was added to the book in microseconds.
     entry_time: int
 
