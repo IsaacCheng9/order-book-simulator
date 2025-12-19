@@ -230,11 +230,7 @@ class OrderBook:
                     "order_count": level.order_count,
                 }
                 # Sort bids from high to low.
-                for price, level in sorted(
-                    self.bid_levels.items(),
-                    key=lambda x: x[0],
-                    reverse=True,
-                )
+                for price, level in self.bid_levels.items()
             ],
             "asks": [
                 {
@@ -243,9 +239,6 @@ class OrderBook:
                     "order_count": level.order_count,
                 }
                 # Sort asks from low to high.
-                for price, level in sorted(
-                    self.ask_levels.items(),
-                    key=lambda x: x[0],
-                )
+                for price, level in self.ask_levels.items()
             ],
         }
