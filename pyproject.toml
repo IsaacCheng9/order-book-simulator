@@ -44,6 +44,10 @@ dev = [
     "typing-extensions>=4.12.2",
 ]
 
+[tool.coverage.run]
+source = ["src/order_book_simulator"]
+omit = ["tests/*", "**/conftest.py"]
+
 [tool.commitizen]
 version = "0.16.0"
 version_files = [
