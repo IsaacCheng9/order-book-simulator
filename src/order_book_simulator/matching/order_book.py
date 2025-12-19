@@ -1,10 +1,11 @@
 from decimal import Decimal
 from typing import Any
-from uuid import UUID
+from uuid import UUID, uuid4
 
 from sortedcontainers import SortedDict
 
 from order_book_simulator.common.models import (
+    FilledOrder,
     OrderBookEntry,
     OrderSide,
     OrderType,
@@ -27,10 +28,10 @@ class OrderBook:
 
     def _match_orders(
         self,
-        incoming_order: dict[str, Any],
+        incoming_order: OrderBookEntry,
         opposing_levels: SortedDict[Decimal, PriceLevel],
         is_buy: bool,
-    ) -> tuple[list[dict], Decimal]:
+    ) -> list[FilledOrder]:
         """
         Matches an incoming order against resting orders in the order book.
 
@@ -40,58 +41,55 @@ class OrderBook:
             is_buy: True if the incoming order is a buy order.
 
         Returns:
-            A tuple containing the list of trades and the remaining quantity.
+            A list of fills from matching the order.
         """
-        trades: list[dict[str, Any]] = []
-        remaining_quantity = Decimal(str(incoming_order["quantity"]))
-        # May not have a price if it's a market order.
-        limit_price: Decimal | None = (
-            Decimal(str(incoming_order["price"]))
-            if incoming_order.get("price") is not None
-            else None
-        )
+        trades: list[FilledOrder] = []
 
         # Only limit orders should have a price.
-        order_type = incoming_order["type"]
-        if isinstance(order_type, str):
-            order_type = OrderType(order_type)
-        if order_type == OrderType.MARKET and limit_price is not None:
+        if (
+            incoming_order.order_type == OrderType.MARKET
+            and incoming_order.price is not None
+        ):
             raise ValueError("Market orders should not have a price.")
-        if order_type == OrderType.LIMIT and limit_price is None:
+        if (
+            incoming_order.order_type == OrderType.LIMIT
+            and incoming_order.price is None
+        ):
             raise ValueError("Limit orders must have a price.")
 
         # Track the price levels that need to be removed after matching.
         levels_to_remove: list[Decimal] = []
 
         for price, level in opposing_levels.items():
-            if remaining_quantity <= Decimal(0):
+            if incoming_order.quantity <= Decimal(0):
                 break
 
             # Check if the price level can match.
-            if limit_price:
-                if is_buy and price > limit_price:
+            if incoming_order.price:
+                if is_buy and price > incoming_order.price:
                     break
-                if not is_buy and price < limit_price:
+                if not is_buy and price < incoming_order.price:
                     break
 
             # Match against orders at this price level (FIFO via dict order).
             orders_to_remove: list[UUID] = []
             for order_id, resting_order in level.orders.items():
-                if remaining_quantity <= Decimal(0):
+                if incoming_order.quantity <= Decimal(0):
                     break
 
                 # Match the maximum quantity possible.
-                match_quantity = min(remaining_quantity, resting_order.quantity)
-                remaining_quantity -= match_quantity
+                match_quantity = min(incoming_order.quantity, resting_order.quantity)
+                incoming_order.quantity -= match_quantity
                 resting_order.quantity -= match_quantity
-                trade = {
-                    "price": price,
-                    "quantity": match_quantity,
-                    "buyer_order_id": incoming_order["id"] if is_buy else order_id,
-                    "seller_order_id": order_id if is_buy else incoming_order["id"],
-                    "stock_id": self.stock_id,
-                }
-                trades.append(trade)
+                fill = FilledOrder(
+                    id=uuid4(),
+                    stock_id=self.stock_id,
+                    price=price,
+                    quantity=match_quantity,
+                    buyer_order_id=incoming_order.id if is_buy else order_id,
+                    seller_order_id=order_id if is_buy else incoming_order.id,
+                )
+                trades.append(fill)
                 # If the resting order has been filled, remove it later.
                 if resting_order.quantity == Decimal(0):
                     orders_to_remove.append(order_id)
@@ -108,54 +106,7 @@ class OrderBook:
         for price_level in levels_to_remove:
             del opposing_levels[price_level]
 
-        return trades, remaining_quantity
-
-    def _insert_order_with_price_time_priority(
-        self,
-        order: OrderBookEntry,
-        orders: list[OrderBookEntry],
-        is_buy: bool,
-    ) -> None:
-        """
-        Inserts an order into the appropriate position, maintaining price-time
-        priority.
-
-        Args:
-            order: The order to insert.
-            orders: The list of orders to insert into.
-            is_buy: True if this is for the buy side.
-        """
-        insert_index = 0
-
-        # Find the correct position to insert the order.
-        for existing_order in orders:
-            if (
-                # Buy orders should prioritise higher prices, then earlier
-                # entry times.
-                is_buy
-                and (
-                    existing_order.price < order.price
-                    or (
-                        existing_order.price == order.price
-                        and existing_order.entry_time > order.entry_time
-                    )
-                )
-            ) or (
-                # Sell orders should prioritise lower prices, then earlier
-                # entry times.
-                not is_buy
-                and (
-                    existing_order.price > order.price
-                    or (
-                        existing_order.price == order.price
-                        and existing_order.entry_time > order.entry_time
-                    )
-                )
-            ):
-                break
-            insert_index += 1
-
-        orders.insert(insert_index, order)
+        return trades
 
     def add_order(self, order: dict[str, Any]) -> list[dict]:
         """
@@ -178,42 +129,51 @@ class OrderBook:
             order_type = OrderType(order_type)
             order["type"] = order_type
         is_buy = side == OrderSide.BUY
-        trades: list[dict[str, Any]] = []
+        price = Decimal(order["price"]) if order.get("price") is not None else None
 
-        # Match against the opposite side of the book if prices overlap.
+        # Create an OrderBookEntry from the incoming order dict.
+        incoming_order = OrderBookEntry(
+            id=order["id"],
+            order_type=order_type,
+            side=side,
+            quantity=Decimal(order["quantity"]),
+            price=price,
+            entry_time=int(order["created_at"].timestamp() * 1_000_000),
+        )
+
+        # Match against the opposite side of the book.
         opposing_orders = self.ask_levels if is_buy else self.bid_levels
-        trades, remaining_quantity = self._match_orders(order, opposing_orders, is_buy)
+        fills: list[FilledOrder] = self._match_orders(
+            incoming_order, opposing_orders, is_buy
+        )
 
         # If it's a limit order and there's remaining quantity, add it to the
         # book.
-        if order_type == OrderType.LIMIT and remaining_quantity > 0:
-            price = Decimal(str(order["price"]))
-            entry = OrderBookEntry(
-                id=order["id"],
-                price=price,
-                quantity=remaining_quantity,
-                # Convert the timestamp to microseconds.
-                entry_time=int(order["created_at"].timestamp() * 1_000_000),
-            )
+        if order_type == OrderType.LIMIT and incoming_order.quantity > 0:
+            if not price:
+                raise ValueError("Limit orders must have a price.")
 
-            # Update or create the price level.
-            aggregated_levels = self.bids if is_buy else self.asks
-            if price in aggregated_levels:
-                aggregated_level = aggregated_levels[price]
-                aggregated_level.quantity += remaining_quantity
-                aggregated_level.order_count += 1
-            else:
-                aggregated_levels[price] = PriceLevel(
-                    price=price,
-                    quantity=remaining_quantity,
-                    order_count=1,
-                )
+            price_levels = self.bid_levels if is_buy else self.ask_levels
 
-            # Add the order to the approrpiate list with price-time priority.
-            orders = self._bid_orders if is_buy else self._ask_orders
-            self._insert_order_with_price_time_priority(entry, orders, is_buy)
+            # Get or create the price level.
+            if price not in price_levels:
+                price_levels[price] = PriceLevel(Decimal(price))
+            price_level = price_levels[price]
 
-        return trades
+            # Add the order to the price level and update the index.
+            price_level.orders[incoming_order.id] = incoming_order
+            self.order_to_price_level[incoming_order.id] = price
+
+        return [
+            {
+                "price": fill.price,
+                "quantity": fill.quantity,
+                "buyer_order_id": fill.buyer_order_id,
+                "seller_order_id": fill.seller_order_id,
+                "stock_id": self.stock_id,
+            }
+            for fill in fills
+        ]
 
     def get_full_snapshot(self) -> dict:
         """
