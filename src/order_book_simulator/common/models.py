@@ -76,6 +76,16 @@ class OrderBookEntry:
 
 
 @dataclass
+class FilledOrder:
+    id: UUID
+    stock_id: UUID
+    price: Decimal
+    quantity: Decimal
+    buyer_order_id: UUID
+    seller_order_id: UUID
+
+
+@dataclass
 class PriceLevel:
     """Represents a price level in the order book with its aggregated quantity."""
 
