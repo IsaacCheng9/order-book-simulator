@@ -1,13 +1,13 @@
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 from typing import cast
 from uuid import uuid4
 
 import pytest
 
-from order_book_simulator.common.models import OrderBookState, PriceLevel
+from order_book_simulator.common.models import OrderBookState
 from order_book_simulator.market_data.analytics import MarketDataAnalytics
-
+from tests.conftest import create_price_level
 
 # add stream storage next to mock_data
 streams: dict[str, list[tuple[str, dict]]] = {}
@@ -24,10 +24,12 @@ async def test_record_state_and_depth(redis_stream_client):
         stock_id=stock_id,
         ticker="AAPL",
         bids=[
-            PriceLevel(price=Decimal("100.00"), quantity=Decimal("10")),
-            PriceLevel(price=Decimal("99.50"), quantity=Decimal("5")),
+            create_price_level(price=Decimal("100.00"), quantity=Decimal("10")),
+            create_price_level(price=Decimal("99.50"), quantity=Decimal("5")),
         ],
-        asks=[PriceLevel(price=Decimal("101.00"), quantity=Decimal("7"))],
+        asks=[
+            create_price_level(price=Decimal("101.00"), quantity=Decimal("7")),
+        ],
         last_trade_price=Decimal("100.50"),
         last_trade_quantity=Decimal("2"),
         last_update_time=now,

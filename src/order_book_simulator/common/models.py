@@ -1,4 +1,4 @@
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime
 from decimal import Decimal
 from enum import Enum
@@ -63,12 +63,44 @@ class Stock(BaseModel):
 
 
 @dataclass
+class OrderBookEntry:
+    """
+    Represents an individual order in the order book.
+    """
+
+    id: UUID
+    order_type: OrderType
+    side: OrderSide
+    quantity: Decimal
+    price: Decimal | None
+    # The time the order was added to the book in microseconds.
+    entry_time: int
+
+
+@dataclass
+class FilledOrder:
+    id: UUID
+    stock_id: UUID
+    price: Decimal
+    quantity: Decimal
+    buyer_order_id: UUID
+    seller_order_id: UUID
+
+
+@dataclass
 class PriceLevel:
     """Represents a price level in the order book with its aggregated quantity."""
 
     price: Decimal
-    quantity: Decimal
-    order_count: int = 0  # Count of orders at this price level
+    orders: dict[UUID, OrderBookEntry] = field(default_factory=dict)
+
+    @property
+    def quantity(self) -> Decimal:
+        return Decimal(sum(order.quantity for order in self.orders.values()))
+
+    @property
+    def order_count(self) -> int:
+        return len(self.orders)
 
 
 @dataclass
@@ -82,16 +114,3 @@ class OrderBookState:
     last_trade_price: Decimal | None
     last_trade_quantity: Decimal | None
     last_update_time: datetime
-
-
-@dataclass
-class OrderBookEntry:
-    """
-    Represents an individual order in the order book.
-    """
-
-    id: UUID
-    price: Decimal
-    quantity: Decimal
-    # The time the order was added to the book in microseconds.
-    entry_time: int

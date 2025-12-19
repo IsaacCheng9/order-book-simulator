@@ -31,10 +31,9 @@ def test_add_buy_limit_order_to_empty_book(order_book: OrderBook) -> None:
     trades = order_book.add_order(order)
 
     assert not trades
-    assert len(order_book.bids) == 1
-    assert len(order_book._bid_orders) == 1
-    assert order_book.bids[Decimal("100")].quantity == Decimal("10")
-    assert order_book.bids[Decimal("100")].order_count == 1
+    assert len(order_book.bid_levels) == 1
+    assert order_book.bid_levels[Decimal("100")].quantity == Decimal("10")
+    assert order_book.bid_levels[Decimal("100")].order_count == 1
 
 
 def test_add_sell_limit_order_to_empty_book(order_book: OrderBook) -> None:
@@ -45,10 +44,9 @@ def test_add_sell_limit_order_to_empty_book(order_book: OrderBook) -> None:
     trades = order_book.add_order(order)
 
     assert not trades
-    assert len(order_book.asks) == 1
-    assert len(order_book._ask_orders) == 1
-    assert order_book.asks[Decimal("100")].quantity == Decimal("10")
-    assert order_book.asks[Decimal("100")].order_count == 1
+    assert len(order_book.ask_levels) == 1
+    assert order_book.ask_levels[Decimal("100")].quantity == Decimal("10")
+    assert order_book.ask_levels[Decimal("100")].order_count == 1
 
 
 def test_matching_limit_orders(order_book: OrderBook) -> None:
@@ -69,8 +67,8 @@ def test_matching_limit_orders(order_book: OrderBook) -> None:
     assert trades[0]["buyer_order_id"] == buy_order["id"]
     assert trades[0]["seller_order_id"] == sell_order["id"]
 
-    assert len(order_book.asks) == 1
-    assert order_book.asks[Decimal("100")].quantity == Decimal("5")
+    assert len(order_book.ask_levels) == 1
+    assert order_book.ask_levels[Decimal("100")].quantity == Decimal("5")
 
 
 def test_price_time_priority_matching(order_book: OrderBook) -> None:
@@ -145,7 +143,7 @@ def test_multiple_trades_from_single_order(order_book: OrderBook) -> None:
     assert trades[0]["price"] == Decimal("100")
     assert trades[1]["price"] == Decimal("101")
     # The book should be empty.
-    assert not order_book.asks
+    assert not order_book.ask_levels
 
 
 def test_market_order_with_price_raises_error(order_book: OrderBook) -> None:

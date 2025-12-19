@@ -16,6 +16,7 @@ dependencies = [
     "polars>=1.22.0",
     "pydantic>=2.10.6",
     "redis>=5.2.1",
+    "sortedcontainers>=2.4.0",
     "sqlalchemy>=2.0.37",
     "streamlit>=1.46.1",
     "uvicorn>=0.34.0",
@@ -39,8 +40,13 @@ dev = [
     "pytest-asyncio>=0.25.3",
     "pytest-cov>=6.0.0",
     "ruff>=0.12.8",
+    "sortedcontainers-stubs>=2.4.3",
     "typing-extensions>=4.12.2",
 ]
+
+[tool.coverage.run]
+source = ["src/order_book_simulator"]
+omit = ["tests/*", "**/conftest.py"]
 
 [tool.commitizen]
 version = "0.16.0"
