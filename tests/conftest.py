@@ -286,6 +286,28 @@ def mock_redis():
         def exists(self, key: str) -> bool:
             return key in mock_data
 
+        def lrange(self, key: str, start: int, end: int) -> list[str]:
+            data = mock_data.get(key, [])
+            if not isinstance(data, list):
+                return []
+            # Redis lrange is inclusive on both ends.
+            if end == -1:
+                return data[start:]
+            return data[start : end + 1]
+
+        def rpush(self, key: str, value: str) -> int:
+            if key not in mock_data:
+                mock_data[key] = []
+            mock_data[key].append(value)
+            return len(mock_data[key])
+
+        def ltrim(self, key: str, start: int, end: int) -> None:
+            if key in mock_data and isinstance(mock_data[key], list):
+                if end == -1:
+                    mock_data[key] = mock_data[key][start:]
+                else:
+                    mock_data[key] = mock_data[key][start : end + 1]
+
         async def xadd(
             self,
             key: str,
