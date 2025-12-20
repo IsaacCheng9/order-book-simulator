@@ -45,6 +45,10 @@ class OrderBook:
         Returns:
             A list of fills from matching the order.
         """
+        # Exit early if there are no opposing levels to match against.
+        if not opposing_levels:
+            return []
+
         trades: list[FilledOrder] = []
 
         # Only limit orders should have a price.
