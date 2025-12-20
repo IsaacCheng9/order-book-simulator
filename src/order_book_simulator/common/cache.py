@@ -9,14 +9,18 @@ from redis import Redis
 class OrderBookCache:
     """Manages order book data in Redis."""
 
-    def __init__(self, redis_url: str = "redis://redis:6379/0"):
+    def __init__(
+        self, redis_url: str = "redis://redis:6379/0", max_trade_history: int = 1_000
+    ):
         """
         Creates a new order book cache.
 
         Args:
             redis_url: The Redis connection URL.
+            max_trade_history: The maximum number of trades to keep in cache.
         """
         self.redis: Redis = redis.from_url(redis_url)
+        self.max_trade_history = max_trade_history
 
     def _get_order_book_key(self, stock_id: UUID) -> str:
         """
@@ -104,9 +108,9 @@ class OrderBookCache:
         """
         key = self._get_trades_key(stock_id)
         raw_data = self.redis.lrange(key, -limit, -1)
-        return [json.loads(data) for data in reversed(raw_data)]  # type: ignore
+        return [json.loads(data) for data in reversed(raw_data)]  # type: ignore[arg-type]
 
-    def append_trades(self, stock_id: UUID, trades: list[dict]) -> bool:
+    def append_trades(self, stock_id: UUID, trades: list[dict]) -> None:
         """
         Appends trades to the trade history for a stock.
 
@@ -116,17 +120,12 @@ class OrderBookCache:
         Args:
             stock_id: The stock ID.
             trades: The list of trades to append.
-
-        Returns:
-            True if the trades were appended successfully.
         """
         key = self._get_trades_key(stock_id)
         serialised_trades = [json.dumps(trade, default=str) for trade in trades]
         self.redis.rpush(key, *serialised_trades)
-        # Only keep the last 1000 trades.
-        self.redis.ltrim(key, -1000, -1)
-
-        return True
+        # Enforce the maximum trade history.
+        self.redis.ltrim(key, -self.max_trade_history, -1)
 
 
 # Global cache instance
