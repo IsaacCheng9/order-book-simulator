@@ -106,11 +106,27 @@ class OrderBookCache:
         raw_data = self.redis.lrange(key, -limit, -1)
         return [json.loads(data) for data in reversed(raw_data)]  # type: ignore
 
-    def append_trade(self, stock_id: UUID, trade: dict) -> None:
-        """Stores trade history for a stock."""
+    def append_trades(self, stock_id: UUID, trades: list[dict]) -> bool:
+        """
+        Appends trades to the trade history for a stock.
+
+        We batch the trades into a single Redis command to reduce the number of
+        round trips to Redis.
+
+        Args:
+            stock_id: The stock ID.
+            trades: The list of trades to append.
+
+        Returns:
+            True if the trades were appended successfully.
+        """
         key = self._get_trades_key(stock_id)
-        self.redis.rpush(key, json.dumps(trade, default=str))
+        serialised_trades = [json.dumps(trade, default=str) for trade in trades]
+        self.redis.rpush(key, *serialised_trades)
+        # Only keep the last 1000 trades.
         self.redis.ltrim(key, -1000, -1)
+
+        return True
 
 
 # Global cache instance

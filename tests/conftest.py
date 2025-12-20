@@ -295,10 +295,10 @@ def mock_redis():
                 return data[start:]
             return data[start : end + 1]
 
-        def rpush(self, key: str, value: str) -> int:
+        def rpush(self, key: str, *values: str) -> int:
             if key not in mock_data:
                 mock_data[key] = []
-            mock_data[key].append(value)
+            mock_data[key].extend(values)
             return len(mock_data[key])
 
         def ltrim(self, key: str, start: int, end: int) -> None:
