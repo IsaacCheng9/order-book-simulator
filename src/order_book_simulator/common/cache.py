@@ -91,31 +91,26 @@ class OrderBookCache:
         """Gets the Redis key for trade history."""
         return f"trades:{stock_id}"
 
-    def get_trades(self, stock_id: UUID) -> list[dict]:
+    def get_trades(self, stock_id: UUID, limit: int = 100) -> list[dict]:
         """
-        Gets trade history for a stock.
+        Gets the latest trades for a stock.
 
         Args:
             stock_id: The stock ID.
+            limit: The maximum number of trades to return.
 
         Returns:
             The trade history for the stock.
         """
         key = self._get_trades_key(stock_id)
-        raw_data = self.redis.get(key)
-        if not raw_data:
-            return []
-        data = (
-            raw_data.decode()
-            if isinstance(raw_data, (bytes, bytearray))
-            else str(raw_data)
-        )
-        return json.loads(data)
+        raw_data = self.redis.lrange(key, -limit, -1)
+        return [json.loads(data) for data in reversed(raw_data)]  # type: ignore
 
-    def set_trades(self, stock_id: UUID, trades: list[dict]) -> None:
+    def append_trade(self, stock_id: UUID, trade: dict) -> None:
         """Stores trade history for a stock."""
         key = self._get_trades_key(stock_id)
-        self.redis.set(key, json.dumps(trades, default=str))
+        self.redis.rpush(key, json.dumps(trade, default=str))
+        self.redis.ltrim(key, -1000, -1)
 
 
 # Global cache instance

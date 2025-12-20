@@ -46,9 +46,8 @@ class MatchingEngine:
                 trade["price"] = str(trade["price"])
                 trade["quantity"] = str(trade["quantity"])
 
-            existing_trades = order_book_cache.get_trades(stock_id)
-            updated_trades = existing_trades + [t for t in trades if t is not None]
-            order_book_cache.set_trades(stock_id, updated_trades)
+            for trade in trades:
+                order_book_cache.append_trade(stock_id, trade)
 
         # Convert Decimal values in bids/asks to strings if not already done
         for level in market_data["bids"] + market_data["asks"]:
