@@ -12,6 +12,7 @@ def test_get_all_order_books_with_orders(test_client, matching_engine, event_loo
         order = {
             "id": str(uuid4()),
             "stock_id": str(stock_id),
+            "ticker": "TICKER",
             "price": "100.00",
             "quantity": "10.00",
             "side": OrderSide.BUY.value,

@@ -15,6 +15,7 @@ def create_order(stock_id: UUID) -> dict[str, Any]:
     return {
         "id": str(uuid4()),
         "stock_id": str(stock_id),
+        "ticker": "TICKER",
         "price": Decimal("100"),
         "quantity": Decimal("10"),
         "side": OrderSide.BUY,
