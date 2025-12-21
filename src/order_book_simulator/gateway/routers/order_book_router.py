@@ -41,6 +41,7 @@ async def create_order(order_request: OrderRequest, db=Depends(get_db)):
         order_record = {
             "id": uuid4(),
             "stock_id": stock.id,
+            "ticker": stock.ticker,
             **order_request.model_dump(),
             "status": OrderStatus.PENDING,
             "filled_quantity": Decimal("0"),

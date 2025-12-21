@@ -6,8 +6,6 @@ from typing import Any, Awaitable, Callable, List, Optional
 from uuid import UUID
 
 from order_book_simulator.common.models import OrderBookState, PriceLevel
-from order_book_simulator.database.connection import AsyncSessionLocal
-from order_book_simulator.database.queries import get_stock_by_id
 from order_book_simulator.market_data.analytics import MarketDataAnalytics
 from order_book_simulator.market_data.processor import process_and_persist_market_data
 
@@ -95,15 +93,14 @@ class MarketDataPublisher:
         """
         logger.info(f"Publishing market data for {stock_id}")
 
-        # Get the specific stock's ticker
-        async with AsyncSessionLocal() as session:
-            stock = await get_stock_by_id(stock_id, session)
-            if not stock:
-                logger.error(f"Could not find stock ID: {stock_id}")
-                return
+        # Get the ticker from the message.
+        ticker = market_data.get("ticker")
+        if not ticker:
+            logger.error(f"No ticker found in market data: {market_data}")
+            return
 
         # Convert to OrderBookState for analytics
-        state = self._convert_to_order_book_state(stock_id, stock.ticker, market_data)
+        state = self._convert_to_order_book_state(stock_id, ticker, market_data)
         # Record in analytics
         if state:
             await self.analytics.record_state(state)

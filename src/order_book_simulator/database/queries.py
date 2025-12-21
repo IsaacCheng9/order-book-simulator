@@ -38,21 +38,6 @@ async def get_tickers_by_ids(stock_ids: list[UUID], db: AsyncSession) -> list[st
     return [row[0] for row in result]
 
 
-async def get_stock_by_id(stock_id: UUID, db: AsyncSession) -> Stock | None:
-    """
-    Gets a stock by its ID.
-
-    Args:
-        stock_id: The ID of the stock to get.
-        db: The database session.
-
-    Returns:
-        The stock with the given ID, or None if no stock is found.
-    """
-    result = await db.execute(select(Stock).where(Stock.id == stock_id))
-    return result.scalar_one_or_none()
-
-
 async def get_stock_id_ticker_mapping(
     stock_ids: list[UUID], db: AsyncSession
 ) -> dict[str, str]:

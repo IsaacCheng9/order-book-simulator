@@ -24,13 +24,18 @@ class MatchingEngine:
         self.market_data_publisher = market_data_publisher
 
     async def _publish_market_data(
-        self, stock_id: UUID, order_book: OrderBook, trades: list[dict[str, Any]]
+        self,
+        stock_id: UUID,
+        ticker: str,
+        order_book: OrderBook,
+        trades: list[dict[str, Any]],
     ) -> None:
         """
         Publishes market data updates for a stock.
 
         Args:
             stock_id: The unique identifier for the stock.
+            ticker: The ticker symbol for the stock.
             order_book: The order book for the stock.
             trades: The list of trades that triggered this update.
         """
@@ -55,7 +60,9 @@ class MatchingEngine:
             if isinstance(level["quantity"], Decimal):
                 level["quantity"] = str(level["quantity"])
 
-        await self.market_data_publisher(stock_id, {**market_data, "trades": trades})
+        await self.market_data_publisher(
+            stock_id, {**market_data, "trades": trades, "ticker": ticker}
+        )
 
     async def process_order(self, order_message: dict[str, Any]) -> None:
         """
@@ -65,6 +72,7 @@ class MatchingEngine:
             order_message: The deserialised order message from Kafka.
         """
         stock_id = UUID(order_message["stock_id"])
+        ticker = order_message["ticker"]
         order_book = self.order_books.get(stock_id)
         if not order_book:
             order_book = OrderBook(stock_id)
@@ -78,4 +86,4 @@ class MatchingEngine:
         order_book_cache.set_order_book(stock_id, order_book.get_full_snapshot())
 
         # Always publish market data updates, even if no trades occurred.
-        await self._publish_market_data(stock_id, order_book, trades or [])
+        await self._publish_market_data(stock_id, ticker, order_book, trades or [])
