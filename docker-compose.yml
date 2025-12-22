@@ -78,11 +78,12 @@ services:
   market-data:
     build:
       context: .
-      dockerfile: docker/Dockerfile.market_data
+      dockerfile: docker/Dockerfile.market_data_db
     depends_on:
       - kafka
-      - redis
       - postgres
+    environment:
+      - DATABASE_URL=postgresql+asyncpg://orderbook_user:orderbook_password@postgres:5432/orderbook_db
 
   redis:
     image: redis:latest

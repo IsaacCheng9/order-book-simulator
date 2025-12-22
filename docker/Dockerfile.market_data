@@ -8,4 +8,4 @@ COPY src/ src/
 
 RUN pip install --no-cache-dir -e .
 
-CMD ["python", "-m", "src.order_book_simulator.market_data.processor"]
+CMD ["python", "-m", "src.order_book_simulator.market_data.db_consumer"]
