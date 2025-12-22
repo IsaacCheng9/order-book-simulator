@@ -7,7 +7,7 @@ from uuid import UUID, uuid4
 import pytest
 
 from order_book_simulator.common.models import OrderSide, OrderType
-from order_book_simulator.matching.engine import MatchingEngine
+from order_book_simulator.matching.matching_engine import MatchingEngine
 
 
 def create_order(stock_id: UUID) -> dict[str, Any]:

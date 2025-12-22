@@ -7,7 +7,7 @@ from aiokafka import AIOKafkaConsumer, AIOKafkaProducer, ConsumerRecord
 from redis.asyncio import Redis
 
 from order_book_simulator.market_data.analytics import MarketDataAnalytics
-from order_book_simulator.matching.engine import MatchingEngine
+from order_book_simulator.matching.matching_engine import MatchingEngine
 
 logger = logging.getLogger(__name__)
 
