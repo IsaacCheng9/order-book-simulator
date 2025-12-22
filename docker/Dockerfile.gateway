@@ -1,13 +1,12 @@
-FROM python:3.13.1-slim
+FROM python:3.13-slim
 
 WORKDIR /app
 
-COPY README.md .
-COPY pyproject.toml .
-COPY src/ src/
-COPY resources/ resources/
+COPY pyproject.toml uv.lock README.md ./
+COPY src/ ./src/
+COPY resources/ ./resources/
 
 RUN apt-get update && apt-get install -y netcat-traditional && rm -rf /var/lib/apt/lists/*
-RUN pip install --no-cache-dir -e . uvicorn
+RUN pip install uv && uv sync --frozen
 
-CMD ["uvicorn", "src.order_book_simulator.gateway.app:app", "--host", "0.0.0.0", "--port", "8000"]
+CMD ["uv", "run", "uvicorn", "order_book_simulator.gateway.app:app", "--host", "0.0.0.0", "--port", "8000"]
