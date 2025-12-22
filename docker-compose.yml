@@ -8,7 +8,7 @@ services:
       - POSTGRES_USER=orderbook_user
       - POSTGRES_PASSWORD=orderbook_password
     volumes:
-      - postgres_data:/var/lib/postgresql/data
+      - postgres_data:/var/lib/postgresql
     ports:
       - "5432:5432"
     healthcheck:
@@ -73,16 +73,22 @@ services:
       context: .
       dockerfile: docker/Dockerfile.matching
     depends_on:
-      - kafka
+      kafka:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
 
   market-data:
     build:
       context: .
       dockerfile: docker/Dockerfile.market_data
     depends_on:
-      - kafka
-      - redis
-      - postgres
+      kafka:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+    environment:
+      - DATABASE_URL=postgresql+asyncpg://orderbook_user:orderbook_password@postgres:5432/orderbook_db
 
   redis:
     image: redis:latest

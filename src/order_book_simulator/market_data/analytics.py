@@ -7,7 +7,7 @@ import polars as pl
 from redis.asyncio import Redis
 from redis.typing import EncodableT, FieldT
 
-from order_book_simulator.common.models import OrderBookState
+from order_book_simulator.common.models import OrderBookState, PriceLevel
 
 
 class MarketDataAnalytics:
@@ -59,7 +59,6 @@ class MarketDataAnalytics:
         best_bid = max(state.bids, key=lambda x: x.price).price if state.bids else None
         best_ask = min(state.asks, key=lambda x: x.price).price if state.asks else None
 
-        # Prepare market data entry
         market_data: dict[str, Any] = {
             "timestamp": state.last_update_time.isoformat(),
             "mid_price": str((best_bid + best_ask) / 2)
@@ -76,12 +75,59 @@ class MarketDataAnalytics:
             else "",
         }
 
-        # Add to Redis Stream
         stream_key = self._get_stream_key(state.stock_id)
         await self.redis.xadd(
             stream_key,
             cast(dict[FieldT, EncodableT], market_data),
-            maxlen=self._window_size,  # Keep last N entries
+            maxlen=self._window_size,
+            approximate=True,
+        )
+
+    async def record_state_from_order_book(
+        self,
+        stock_id: UUID,
+        bid_levels: list[PriceLevel],
+        ask_levels: list[PriceLevel],
+        last_trade_price: Decimal | None,
+        last_trade_quantity: Decimal | None,
+    ) -> None:
+        """
+        Records order book state to Redis Stream using actual PriceLevels.
+
+        This is more efficient than record_state() because it takes the actual
+        PriceLevel objects from the order book, avoiding the need to
+        reconstruct them from serialised data.
+
+        Args:
+            stock_id: Unique identifier of the stock.
+            bid_levels: List of bid price levels from the order book.
+            ask_levels: List of ask price levels from the order book.
+            last_trade_price: Price of the last trade, if any.
+            last_trade_quantity: Quantity of the last trade, if any.
+        """
+        best_bid = max(bid_levels, key=lambda x: x.price).price if bid_levels else None
+        best_ask = min(ask_levels, key=lambda x: x.price).price if ask_levels else None
+
+        now = datetime.now(timezone.utc)
+        market_data: dict[str, Any] = {
+            "timestamp": now.isoformat(),
+            "mid_price": str((best_bid + best_ask) / 2)
+            if best_bid and best_ask
+            else "",
+            "spread": str(best_ask - best_bid) if best_bid and best_ask else "",
+            "bid_depth": str(sum(level.quantity for level in bid_levels)),
+            "ask_depth": str(sum(level.quantity for level in ask_levels)),
+            "last_trade_price": str(last_trade_price) if last_trade_price else "",
+            "last_trade_quantity": str(last_trade_quantity)
+            if last_trade_quantity
+            else "",
+        }
+
+        stream_key = self._get_stream_key(stock_id)
+        await self.redis.xadd(
+            stream_key,
+            cast(dict[FieldT, EncodableT], market_data),
+            maxlen=self._window_size,
             approximate=True,
         )
 

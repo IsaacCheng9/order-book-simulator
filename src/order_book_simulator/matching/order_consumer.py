@@ -3,12 +3,11 @@ import json
 import logging
 from datetime import datetime, timezone
 
-from aiokafka import AIOKafkaConsumer, ConsumerRecord
+from aiokafka import AIOKafkaConsumer, AIOKafkaProducer, ConsumerRecord
 from redis.asyncio import Redis
 
 from order_book_simulator.market_data.analytics import MarketDataAnalytics
-from order_book_simulator.market_data.publisher import MarketDataPublisher
-from order_book_simulator.matching.engine import MatchingEngine
+from order_book_simulator.matching.matching_engine import MatchingEngine
 
 logger = logging.getLogger(__name__)
 
@@ -142,16 +141,18 @@ class OrderConsumer:
 
 async def main():
     """Main entry point for the matching engine consumer."""
-    # Create analytics instance
+    # Create Redis client for analytics.
     redis_client = Redis(host="redis", port=6379, decode_responses=True)
     analytics = MarketDataAnalytics(redis_client)
 
-    # Create the market data publisher
-    market_data_publisher = MarketDataPublisher(analytics)
+    # Create Kafka producer for publishing market data.
+    producer = AIOKafkaProducer(bootstrap_servers="kafka:9092")
+    await producer.start()
 
-    # Create the matching engine with the publisher
+    # Create the matching engine with Kafka producer and analytics.
     matching_engine = MatchingEngine(
-        market_data_publisher=market_data_publisher.publish_market_data
+        kafka_producer=producer,
+        analytics=analytics,
     )
     consumer = OrderConsumer(
         matching_engine=matching_engine,
@@ -168,6 +169,7 @@ async def main():
         logger.info("Shutting down consumer...")
     finally:
         await consumer.stop()
+        await producer.stop()
 
 
 if __name__ == "__main__":

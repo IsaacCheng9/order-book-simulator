@@ -17,7 +17,7 @@ from order_book_simulator.common.models import (
 from order_book_simulator.database.connection import get_db
 from order_book_simulator.database.db_models import Base
 from order_book_simulator.gateway.app import app, app_state
-from order_book_simulator.matching.engine import MatchingEngine
+from order_book_simulator.matching.matching_engine import MatchingEngine
 from order_book_simulator.matching.order_book import OrderBook
 
 # Add test database configuration
@@ -54,9 +54,18 @@ def market_data_publisher():
 
 
 @pytest.fixture
-def matching_engine(market_data_publisher) -> MatchingEngine:
+def mock_analytics():
+    """Creates a mock analytics instance for testing."""
+    analytics = AsyncMock()
+    analytics.record_state = AsyncMock()
+    analytics.record_state_from_order_book = AsyncMock()
+    return analytics
+
+
+@pytest.fixture
+def matching_engine(mock_kafka_producer, mock_analytics) -> MatchingEngine:
     """Creates a matching engine instance for testing."""
-    engine = MatchingEngine(market_data_publisher)
+    engine = MatchingEngine(mock_kafka_producer, mock_analytics)
     app_state.matching_engine = engine
     return engine
 
