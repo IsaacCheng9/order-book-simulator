@@ -20,8 +20,11 @@ from order_book_simulator.gateway.app import app, app_state
 from order_book_simulator.matching.matching_engine import MatchingEngine
 from order_book_simulator.matching.order_book import OrderBook
 
-# Add test database configuration
-test_engine = create_async_engine("postgresql+asyncpg://test:test@localhost:5432/test")
+# Add test database configuration - use SQLite for unit tests.
+test_engine = create_async_engine(
+    "sqlite+aiosqlite:///:memory:",
+    connect_args={"check_same_thread": False},
+)
 TestingSessionLocal = async_sessionmaker(
     test_engine,
     class_=AsyncSession,
@@ -358,9 +361,9 @@ def mock_redis():
     mock_data.clear()
 
 
-@pytest.fixture(autouse=True)
+@pytest.fixture
 async def create_test_database():
-    """Creates test database tables."""
+    """Creates test database tables for tests that need them."""
     async with test_engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
     yield
