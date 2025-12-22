@@ -54,9 +54,18 @@ def market_data_publisher():
 
 
 @pytest.fixture
-def matching_engine(market_data_publisher) -> MatchingEngine:
+def mock_analytics():
+    """Creates a mock analytics instance for testing."""
+    analytics = AsyncMock()
+    analytics.record_state = AsyncMock()
+    analytics.record_state_from_order_book = AsyncMock()
+    return analytics
+
+
+@pytest.fixture
+def matching_engine(mock_kafka_producer, mock_analytics) -> MatchingEngine:
     """Creates a matching engine instance for testing."""
-    engine = MatchingEngine(market_data_publisher)
+    engine = MatchingEngine(mock_kafka_producer, mock_analytics)
     app_state.matching_engine = engine
     return engine
 

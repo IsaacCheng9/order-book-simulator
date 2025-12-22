@@ -1,13 +1,13 @@
 from datetime import datetime, timezone
 from decimal import Decimal
 from typing import Any
+from unittest.mock import AsyncMock
 from uuid import UUID, uuid4
 
 import pytest
 
 from order_book_simulator.common.models import OrderSide, OrderType
 from order_book_simulator.matching.engine import MatchingEngine
-from tests.conftest import MockMarketDataPublisher
 
 
 def create_order(stock_id: UUID) -> dict[str, Any]:
@@ -36,7 +36,7 @@ async def test_creates_order_book_for_new_stock(matching_engine: MatchingEngine)
 
 @pytest.mark.asyncio
 async def test_publishes_market_data_on_trade(
-    matching_engine: MatchingEngine, market_data_publisher: MockMarketDataPublisher
+    matching_engine: MatchingEngine, mock_kafka_producer: AsyncMock
 ):
     """Tests that market data updates are published when trades occur."""
     stock_id = uuid4()
@@ -49,5 +49,5 @@ async def test_publishes_market_data_on_trade(
     buy_order = create_order(stock_id)
     await matching_engine.process_order(buy_order)
 
-    # We expect updates for both orders.
-    assert len(market_data_publisher.published_updates) == 2
+    # We expect Kafka send_and_wait to be called for each order processed.
+    assert mock_kafka_producer.send_and_wait.call_count == 2
