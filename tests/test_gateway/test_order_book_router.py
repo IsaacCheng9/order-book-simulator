@@ -1,10 +1,11 @@
+import asyncio
 from datetime import datetime, timezone
 from uuid import uuid4
 
 from order_book_simulator.common.models import OrderSide, OrderType
 
 
-def test_get_all_order_books_with_orders(test_client, matching_engine, event_loop):
+def test_get_all_order_books_with_orders(test_client, matching_engine):
     """Tests getting all order books with existing orders."""
     # Create orders for two different stocks
     stock_ids = [uuid4(), uuid4()]
@@ -19,7 +20,7 @@ def test_get_all_order_books_with_orders(test_client, matching_engine, event_loo
             "type": OrderType.LIMIT.value,
             "created_at": datetime.now(timezone.utc),
         }
-        event_loop.run_until_complete(matching_engine.process_order(order))
+        asyncio.run(matching_engine.process_order(order))
 
     # Get all order books
     response = test_client.get("/v1/order-book/collection")
