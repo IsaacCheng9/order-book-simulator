@@ -78,7 +78,7 @@ services:
   market-data:
     build:
       context: .
-      dockerfile: docker/Dockerfile.market_data_db
+      dockerfile: docker/Dockerfile.market_data
     depends_on:
       - kafka
       - postgres

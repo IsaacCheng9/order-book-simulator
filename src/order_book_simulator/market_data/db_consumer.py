@@ -24,7 +24,7 @@ class MarketDataDBConsumer:
         self,
         bootstrap_servers: str = "kafka:9092",
         topic: str = "market-data",
-        group_id: str = "market-data-db",
+        group_id: str = "market-data",
         batch_size: int = 50,
         batch_timeout_ms: int = 100,
     ):
