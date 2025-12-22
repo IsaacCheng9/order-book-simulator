@@ -217,4 +217,3 @@ def test_batch_timeout_threshold(consumer: MarketDataDBConsumer):
     consumer.last_flush = time.time() - consumer.batch_timeout - 0.01
     should_flush = time.time() - consumer.last_flush >= consumer.batch_timeout
     assert should_flush
-
