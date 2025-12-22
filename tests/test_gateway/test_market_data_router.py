@@ -1,3 +1,4 @@
+import asyncio
 from datetime import datetime, timezone
 from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import uuid4
@@ -26,7 +27,7 @@ def _assert_trade_structure(trade: dict) -> None:
         assert field in trade
 
 
-def test_get_active_stocks_with_orders(test_client, matching_engine, event_loop):
+def test_get_active_stocks_with_orders(test_client, matching_engine):
     """Tests getting active stocks with existing order books."""
     # Use predefined stock IDs that work with the mock
     stock_ids = [uuid4(), uuid4()]
@@ -46,7 +47,7 @@ def test_get_active_stocks_with_orders(test_client, matching_engine, event_loop)
             "type": OrderType.LIMIT.value,
             "created_at": datetime.now(timezone.utc),
         }
-        event_loop.run_until_complete(matching_engine.process_order(order))
+        asyncio.run(matching_engine.process_order(order))
 
     response = test_client.get("/v1/market-data/stocks-with-orders")
     assert response.status_code == 200
