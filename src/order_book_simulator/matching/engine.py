@@ -1,9 +1,13 @@
+import json
 from datetime import datetime, timezone
 from decimal import Decimal
-from typing import Any, Awaitable, Callable
+from typing import Any
 from uuid import UUID
 
+from aiokafka import AIOKafkaProducer
+
 from order_book_simulator.common.cache import order_book_cache
+from order_book_simulator.market_data.analytics import MarketDataAnalytics
 from order_book_simulator.matching.order_book import OrderBook
 
 
@@ -12,16 +16,23 @@ class MatchingEngine:
     Coordinates order processing across multiple stocks.
     """
 
-    def __init__(self, market_data_publisher: Callable[[UUID, dict], Awaitable[None]]):
+    def __init__(
+        self,
+        kafka_producer: AIOKafkaProducer,
+        analytics: MarketDataAnalytics,
+    ):
         """
         Creates a new matching engine to coordinate between order books and
         market data.
 
         Args:
-            market_data_publisher: A callback to publish market data updates.
+            kafka_producer: The Kafka producer to use for publishing market
+                            data.
+            analytics: The analytics service to record market data.
         """
         self.order_books: dict[UUID, OrderBook] = {}
-        self.market_data_publisher = market_data_publisher
+        self.producer = kafka_producer
+        self.analytics = analytics
 
     async def _publish_market_data(
         self,
@@ -39,29 +50,40 @@ class MatchingEngine:
             order_book: The order book for the stock.
             trades: The list of trades that triggered this update.
         """
-        # Get current order book state
-        market_data = order_book.get_full_snapshot()
-
-        # Convert Decimal objects to strings in trades
+        # Serialise trades for Kafka and Redis.
         if trades:
             for trade in trades:
                 if "timestamp" not in trade:
                     trade["timestamp"] = datetime.now(timezone.utc).isoformat()
-                # Convert Decimal values to strings
                 trade["price"] = str(trade["price"])
                 trade["quantity"] = str(trade["quantity"])
-
+                trade["buyer_order_id"] = str(trade["buyer_order_id"])
+                trade["seller_order_id"] = str(trade["seller_order_id"])
+                trade["stock_id"] = str(trade["stock_id"])
             order_book_cache.append_trades(stock_id, trades)
 
-        # Convert Decimal values in bids/asks to strings if not already done
-        for level in market_data["bids"] + market_data["asks"]:
-            if isinstance(level["price"], Decimal):
-                level["price"] = str(level["price"])
-            if isinstance(level["quantity"], Decimal):
-                level["quantity"] = str(level["quantity"])
+        # Get snapshot for Kafka payload (already string-serialised).
+        snapshot = order_book.get_full_snapshot()
+        payload = {
+            "stock_id": str(stock_id),
+            "ticker": ticker,
+            **snapshot,
+            "trades": trades,
+        }
+        await self.producer.send_and_wait(
+            "market-data",
+            json.dumps(payload).encode("utf-8"),
+        )
 
-        await self.market_data_publisher(
-            stock_id, {**market_data, "trades": trades, "ticker": ticker}
+        # Record analytics using the actual order book price levels (not the
+        # serialised snapshot) so we have proper PriceLevel objects with
+        # computed quantities.
+        await self.analytics.record_state_from_order_book(
+            stock_id=stock_id,
+            bid_levels=list(order_book.bid_levels.values()),
+            ask_levels=list(order_book.ask_levels.values()),
+            last_trade_price=Decimal(trades[-1]["price"]) if trades else None,
+            last_trade_quantity=Decimal(trades[-1]["quantity"]) if trades else None,
         )
 
     async def process_order(self, order_message: dict[str, Any]) -> None:
