@@ -140,18 +140,36 @@ uv run python examples/market_simulator_usage.py
 
 ### Running Benchmarks
 
-The project includes two types of benchmarks:
+The project includes two categories of benchmarks:
+
+#### Unit Benchmarks (No Docker Required)
 
 ```bash
 # Benchmark the core order book data structure (pure Python, synchronous).
-uv run python benchmarks/order_book_benchmark.py
+python benchmarks/unit/order_book_benchmark.py
 
-# Benchmark the full matching engine with async I/O orchestration.
-uv run python benchmarks/matching_engine_benchmark.py
+# Benchmark the full matching engine with mocked I/O.
+python benchmarks/unit/matching_engine_benchmark.py
+
+# Run all unit benchmarks together.
+python benchmarks/unit/run_all.py
 ```
 
 The order book benchmark measures the raw performance of the matching logic and
-data structures, so it will demonstrate a higher throughput. The matching engine
-benchmark measures end-to-end throughput including Redis caching, Kafka
-messaging, and analytics, reflecting realistic system performance, meaning it
-will demonstrate a lower throughput.
+data structures (higher throughput). The matching engine benchmark measures
+end-to-end throughput with mocked dependencies (lower throughput), showing async
+orchestration overhead.
+
+#### Integration Benchmarks (Requires Docker Compose)
+
+```bash
+# Integration benchmark with real Redis and Kafka.
+docker compose up -d redis kafka
+sleep 5
+python benchmarks/integration/integration_benchmark.py
+docker compose down -v
+```
+
+The integration benchmark uses real Redis and Kafka, reflecting true production
+performance (lowest throughput). This shows the impact of actual I/O operations
+and is the most realistic measure of production performance.
