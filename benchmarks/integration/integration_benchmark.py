@@ -82,7 +82,7 @@ async def create_engine() -> tuple[MatchingEngine, AIOKafkaProducer]:
     return engine, producer
 
 
-async def benchmark_insertion(num_orders: int = 1_000, batch_size: int = 100) -> float:
+async def benchmark_insertion(num_orders: int = 1_000, batch_size: int = 50) -> float:
     """
     Benchmarks the insertion of buy orders into the matching engine with
     varying prices (no matching occurs).
@@ -119,13 +119,14 @@ async def benchmark_insertion(num_orders: int = 1_000, batch_size: int = 100) ->
     return orders_per_second
 
 
-async def benchmark_matching(num_orders: int = 1_000) -> float:
+async def benchmark_matching(num_orders: int = 1_000, batch_size: int = 50) -> float:
     """
     Benchmarks the matching logic by inserting alternating buy and sell
     orders at the same price.
 
     Args:
         num_orders: The number of orders to insert.
+        batch_size: The number of orders to process concurrently.
 
     Returns:
         The number of orders processed per second.
@@ -140,8 +141,9 @@ async def benchmark_matching(num_orders: int = 1_000) -> float:
     ]
 
     start = time.perf_counter()
-    for order in orders:
-        await engine.process_order(order)
+    for index in range(0, len(orders), batch_size):
+        batch = orders[index : index + batch_size]
+        await asyncio.gather(*[engine.process_order(order) for order in batch])
     elapsed = time.perf_counter() - start
 
     await producer.stop()
@@ -149,13 +151,14 @@ async def benchmark_matching(num_orders: int = 1_000) -> float:
     orders_per_second = num_orders / elapsed
     print(
         f"Matched {num_orders:,} orders in {elapsed:.3f} seconds "
-        f"({orders_per_second:,.2f} orders/second)"
+        f"({orders_per_second:,.2f} orders/second) "
+        f"with batch size {batch_size}"
     )
     return orders_per_second
 
 
 async def benchmark_deep_book(
-    num_levels: int = 100, orders_per_level: int = 10
+    num_levels: int = 100, orders_per_level: int = 10, batch_size: int = 50
 ) -> float:
     """
     Benchmarks the insertion of buy orders into a deep order book (many price
@@ -164,6 +167,7 @@ async def benchmark_deep_book(
     Args:
         num_levels: The number of price levels to insert.
         orders_per_level: The number of orders to insert per price level.
+        batch_size: The number of orders to process concurrently.
 
     Returns:
         The number of orders processed per second.
@@ -178,8 +182,9 @@ async def benchmark_deep_book(
     ]
 
     start = time.perf_counter()
-    for order in orders:
-        await engine.process_order(order)
+    for index in range(0, len(orders), batch_size):
+        batch = orders[index : index + batch_size]
+        await asyncio.gather(*[engine.process_order(order) for order in batch])
     elapsed = time.perf_counter() - start
 
     await producer.stop()
@@ -188,7 +193,8 @@ async def benchmark_deep_book(
     print(
         f"Inserted {total_orders:,} orders, with {num_levels:,} price levels "
         f"and {orders_per_level:,} orders per level into a deep book "
-        f"in {elapsed:.3f} seconds ({orders_per_second:,.2f} orders/second)"
+        f"in {elapsed:.3f} seconds ({orders_per_second:,.2f} orders/second) "
+        f"with batch size {batch_size}"
     )
     return orders_per_second
 
@@ -201,12 +207,12 @@ async def main() -> None:
     print()
     print("Note: These results reflect actual I/O performance with async Redis")
     print("and show the true impact of async optimisations.")
+    print("Batch size: 50 concurrent orders (optimal for this setup)")
     print()
 
-    for batch_size in [1, 10, 25, 50, 100, 200, 300, 500, 1000]:
-        await benchmark_insertion(10_000, batch_size)
-    await benchmark_matching(1_000)
-    await benchmark_deep_book(100, 10)  # 1,000 orders total
+    await benchmark_insertion(5_000, batch_size=50)
+    await benchmark_matching(5_000, batch_size=50)
+    await benchmark_deep_book(100, 50, batch_size=50)  # 5,000 orders total
 
 
 if __name__ == "__main__":
