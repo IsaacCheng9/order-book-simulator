@@ -1,6 +1,10 @@
 """
 A benchmark harness for the matching engine.
 
+The matching engine benchmarks the end-to-end throughput of the matching
+engine, including Redis caching, Kafka messaging, and analytics. Therefore, the
+throughput will be lower than the order book benchmark.
+
 This can be used to measure the performance of the matching engine under
 various conditions and before / after changes to the code implementation.
 """
