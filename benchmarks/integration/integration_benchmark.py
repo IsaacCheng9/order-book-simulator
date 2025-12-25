@@ -1,12 +1,13 @@
 """
-Integration benchmark using real Redis and Kafka.
+Integration benchmark using real async Redis and Kafka.
 
 This benchmark measures end-to-end performance with actual I/O operations,
 providing realistic production performance metrics. Unlike the unit benchmark
 which uses mocks, this shows the true impact of async Redis and other
 optimisations.
 
-Requires Docker Compose services to be running.
+Requires Docker Compose services to be running:
+    docker compose up -d redis kafka
 """
 
 import asyncio
@@ -19,6 +20,11 @@ from aiokafka import AIOKafkaProducer
 
 from order_book_simulator.common.models import OrderSide, OrderType
 from order_book_simulator.matching.matching_engine import MatchingEngine
+
+from redis.asyncio import Redis
+
+from order_book_simulator.common.cache import order_book_cache
+from order_book_simulator.market_data.analytics import MarketDataAnalytics
 
 
 def create_order(
@@ -53,14 +59,8 @@ async def create_engine() -> tuple[MatchingEngine, AIOKafkaProducer]:
     Returns:
         A tuple of (MatchingEngine, AIOKafkaProducer).
     """
-    # Use real Redis (sync for now, will be async in the async Redis branch).
-    from redis import Redis
-    from unittest.mock import AsyncMock
-
-    from order_book_simulator.common.cache import order_book_cache
-
+    # Use real async Redis.
     redis_client = Redis.from_url("redis://localhost:6379/1")
-
     # Override the global cache to use localhost instead of redis:6379.
     order_book_cache.redis = redis_client
 
@@ -71,10 +71,8 @@ async def create_engine() -> tuple[MatchingEngine, AIOKafkaProducer]:
     )
     await producer.start()
 
-    # Mock analytics for now (analytics uses async Redis which isn't on this
-    # branch yet). On the async Redis branch, use real analytics.
-    analytics = AsyncMock()
-    analytics.record_state_from_order_book = AsyncMock()
+    # Use real analytics with async Redis.
+    analytics = MarketDataAnalytics(redis_client)
 
     engine = MatchingEngine(producer, analytics)
     return engine, producer
@@ -191,11 +189,11 @@ async def benchmark_deep_book(
 async def main() -> None:
     """Runs all integration benchmarks."""
     print("=" * 80)
-    print("Integration Benchmark (Real Redis + Kafka)")
+    print("Integration Benchmark (Real Async Redis + Kafka)")
     print("=" * 80)
     print()
-    print("Note: These results reflect actual I/O performance and show the")
-    print("true impact of async Redis and other optimisations.")
+    print("Note: These results reflect actual I/O performance with async Redis")
+    print("and show the true impact of async optimisations.")
     print()
 
     await benchmark_insertion(1_000)
