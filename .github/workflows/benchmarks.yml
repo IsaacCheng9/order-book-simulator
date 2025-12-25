@@ -29,17 +29,35 @@ jobs:
       - name: Install the project
         run: uv sync --all-extras --dev
 
-      - name: Run benchmarks
+      - name: Start Docker Compose services
+        run: docker compose up -d redis kafka
+
+      - name: Wait for services to be ready
+        run: |
+          echo "Waiting for Redis..."
+          timeout 30 bash -c 'until docker compose exec -T redis redis-cli ping; do sleep 1; done'
+          echo "Waiting for Kafka..."
+          timeout 60 bash -c 'until docker compose exec -T kafka kafka-broker-api-versions --bootstrap-server localhost:9092 2>/dev/null; do sleep 2; done'
+          echo "Services ready"
+
+      - name: Run unit benchmarks
         run: |
           set -e  # Exit immediately if any command fails
-          echo "Commit: ${{ github.sha }}" | tee -a benchmark_results.txt
+          echo "Commit: ${{ github.sha }}" | tee benchmark_results.txt
           echo "Date: $(date -u)" | tee -a benchmark_results.txt
-          echo ""
-          echo "=== Order Book Benchmark ===" | tee benchmark_results.txt
-          uv run python -m benchmarks.order_book_benchmark | tee -a benchmark_results.txt
           echo "" | tee -a benchmark_results.txt
-          echo "=== Matching Engine Benchmark ===" | tee -a benchmark_results.txt
-          uv run python -m benchmarks.matching_engine_benchmark | tee -a benchmark_results.txt
+          echo "=== Unit Benchmarks ===" | tee -a benchmark_results.txt
+          uv run --no-project python benchmarks/unit/run_all.py | tee -a benchmark_results.txt
+
+      - name: Run integration benchmarks
+        run: |
+          echo "" | tee -a benchmark_results.txt
+          echo "=== Integration Benchmarks ===" | tee -a benchmark_results.txt
+          uv run --no-project python benchmarks/integration/integration_benchmark.py | tee -a benchmark_results.txt
+
+      - name: Stop Docker Compose services
+        if: always()
+        run: docker compose down -v
 
       - name: Upload benchmark results
         uses: actions/upload-artifact@v4

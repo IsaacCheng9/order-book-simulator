@@ -145,7 +145,12 @@ def benchmark_deep_book(num_levels: int = 1000, orders_per_level: int = 100) -> 
     return orders_per_second
 
 
-if __name__ == "__main__":
+def main() -> None:
+    """Runs all benchmarks."""
     benchmark_insertion(10_000)
     benchmark_matching(10_000)
     benchmark_deep_book(1_000, 100)
+
+
+if __name__ == "__main__":
+    main()
