@@ -2,8 +2,7 @@ import json
 from typing import Any
 from uuid import UUID
 
-import redis
-from redis import Redis
+from redis.asyncio import Redis
 
 
 class OrderBookCache:
@@ -30,7 +29,7 @@ class OrderBookCache:
     def redis(self) -> Redis:
         """Returns the Redis client, connecting lazily on first access."""
         if self._redis is None:
-            self._redis = redis.from_url(self._redis_url)
+            self._redis = Redis.from_url(self._redis_url)
         return self._redis
 
     @redis.setter
@@ -50,7 +49,7 @@ class OrderBookCache:
         """
         return f"order_book:{stock_id}"
 
-    def set_order_book(self, stock_id: UUID, snapshot: dict[str, Any]) -> None:
+    async def set_order_book(self, stock_id: UUID, snapshot: dict[str, Any]) -> None:
         """
         Stores an order book snapshot in Redis.
 
@@ -59,9 +58,12 @@ class OrderBookCache:
             snapshot: The order book snapshot.
         """
         key = self._get_order_book_key(stock_id)
-        self.redis.set(key, json.dumps(snapshot, default=str))  # Use str for Decimal
+        await self.redis.set(
+            key,  # type: ignore[arg-type]
+            json.dumps(snapshot, default=str),
+        )
 
-    def get_order_book(self, stock_id: UUID) -> dict[str, Any] | None:
+    async def get_order_book(self, stock_id: UUID) -> dict[str, Any] | None:
         """
         Gets an order book snapshot from Redis.
 
@@ -72,7 +74,7 @@ class OrderBookCache:
             The order book snapshot if it exists, None otherwise.
         """
         key = self._get_order_book_key(stock_id)
-        raw_data = self.redis.get(key)
+        raw_data = await self.redis.get(key)  # type: ignore[arg-type]
         if not raw_data:
             return None
         data = (
@@ -82,14 +84,14 @@ class OrderBookCache:
         )
         return json.loads(data)
 
-    def get_all_order_books(self) -> dict[str, dict[str, Any]]:
+    async def get_all_order_books(self) -> dict[str, dict[str, Any]]:
         """
         Gets all order book snapshots from Redis.
 
         Returns:
             A dictionary of order book snapshots keyed by stock ID.
         """
-        keys = self.redis.keys("order_book:*")
+        keys = await self.redis.keys("order_book:*")
         result: dict[str, dict[str, Any]] = {}
         for key in keys:  # type: ignore
             stock_id = (
@@ -97,7 +99,7 @@ class OrderBookCache:
                 if isinstance(key, str)
                 else key.decode().split(":")[-1]
             )
-            raw_data = self.redis.get(key)
+            raw_data = await self.redis.get(key)
             if raw_data:
                 data = (
                     raw_data.decode()
@@ -111,7 +113,7 @@ class OrderBookCache:
         """Gets the Redis key for trade history."""
         return f"trades:{stock_id}"
 
-    def get_trades(self, stock_id: UUID, limit: int = 100) -> list[dict]:
+    async def get_trades(self, stock_id: UUID, limit: int = 100) -> list[dict]:
         """
         Gets the latest trades for a stock.
 
@@ -123,10 +125,10 @@ class OrderBookCache:
             The trade history for the stock.
         """
         key = self._get_trades_key(stock_id)
-        raw_data = self.redis.lrange(key, -limit, -1)
+        raw_data = await self.redis.lrange(key, -limit, -1)  # type: ignore[arg-type]
         return [json.loads(data) for data in reversed(raw_data)]  # type: ignore[arg-type]
 
-    def append_trades(self, stock_id: UUID, trades: list[dict]) -> None:
+    async def append_trades(self, stock_id: UUID, trades: list[dict]) -> None:
         """
         Appends trades to the trade history for a stock.
 
@@ -139,9 +141,9 @@ class OrderBookCache:
         """
         key = self._get_trades_key(stock_id)
         serialised_trades = [json.dumps(trade, default=str) for trade in trades]
-        self.redis.rpush(key, *serialised_trades)
+        await self.redis.rpush(key, *serialised_trades)  # type: ignore[arg-type]
         # Enforce the maximum trade history.
-        self.redis.ltrim(key, -self.max_trade_history, -1)
+        await self.redis.ltrim(key, -self.max_trade_history, -1)  # type: ignore[arg-type]
 
 
 # Global cache instance
