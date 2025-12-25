@@ -63,7 +63,7 @@ async def get_order_books() -> dict[str, Any]:
     Returns:
         A dictionary of order books keyed by stock ID.
     """
-    order_books = order_book_cache.get_all_order_books()
+    order_books = await order_book_cache.get_all_order_books()
     return {
         "timestamp": datetime.now(timezone.utc).isoformat(),
         "order_books": {
@@ -98,8 +98,8 @@ async def get_order_book(
             detail=f"No stock found with ticker {ticker}",
         )
 
-    snapshot = order_book_cache.get_order_book(stock.id)
-    trades = order_book_cache.get_trades(stock.id)
+    snapshot = await order_book_cache.get_order_book(stock.id)
+    trades = await order_book_cache.get_trades(stock.id)
 
     if not snapshot:
         raise HTTPException(

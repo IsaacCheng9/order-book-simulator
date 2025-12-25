@@ -61,7 +61,7 @@ async def get_active_stocks(db: AsyncSession = Depends(get_db)) -> dict[str, Any
     Returns:
         A dictionary containing the stock_id -> ticker mapping and sorted tickers list.
     """
-    order_books = order_book_cache.get_all_order_books()
+    order_books = await order_book_cache.get_all_order_books()
     stock_ids = [UUID(id_) for id_ in order_books.keys()]
 
     # Get proper stock_id -> ticker mapping from database
