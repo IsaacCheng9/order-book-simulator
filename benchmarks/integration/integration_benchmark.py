@@ -6,8 +6,12 @@ providing realistic production performance metrics. Unlike the unit benchmark
 which uses mocks, this shows the true impact of async Redis and other
 optimisations.
 
-Requires Docker Compose services to be running:
-    docker compose up -d redis kafka
+Requires Docker Compose services to be running - run the following commands:
+
+docker compose up -d redis kafka
+sleep 5
+python benchmarks/integration/integration_benchmark.py
+docker compose down -v
 """
 
 import asyncio
@@ -78,13 +82,14 @@ async def create_engine() -> tuple[MatchingEngine, AIOKafkaProducer]:
     return engine, producer
 
 
-async def benchmark_insertion(num_orders: int = 1_000) -> float:
+async def benchmark_insertion(num_orders: int = 1_000, batch_size: int = 100) -> float:
     """
     Benchmarks the insertion of buy orders into the matching engine with
     varying prices (no matching occurs).
 
     Args:
         num_orders: The number of orders to insert.
+        batch_size: The number of orders to insert in each batch.
 
     Returns:
         The number of orders processed per second.
@@ -98,8 +103,9 @@ async def benchmark_insertion(num_orders: int = 1_000) -> float:
     ]
 
     start = time.perf_counter()
-    for order in orders:
-        await engine.process_order(order)
+    for index in range(0, len(orders), batch_size):
+        batch = orders[index : index + batch_size]
+        await asyncio.gather(*[engine.process_order(order) for order in batch])
     elapsed = time.perf_counter() - start
 
     await producer.stop()
@@ -107,7 +113,8 @@ async def benchmark_insertion(num_orders: int = 1_000) -> float:
     orders_per_second = num_orders / elapsed
     print(
         f"Inserted {num_orders:,} orders in {elapsed:.3f} seconds "
-        f"({orders_per_second:,.2f} orders/second)"
+        f"({orders_per_second:,.2f} orders/second) "
+        f"with batch size {batch_size}"
     )
     return orders_per_second
 
@@ -196,7 +203,8 @@ async def main() -> None:
     print("and show the true impact of async optimisations.")
     print()
 
-    await benchmark_insertion(1_000)
+    for batch_size in [1, 10, 25, 50, 100, 200, 300, 500, 1000]:
+        await benchmark_insertion(10_000, batch_size)
     await benchmark_matching(1_000)
     await benchmark_deep_book(100, 10)  # 1,000 orders total
 
