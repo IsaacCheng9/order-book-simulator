@@ -46,8 +46,8 @@ jobs:
           uv lock
 
           # Get old and new versions for commit message
-          OLD_VERSION=$(git diff HEAD pyproject.toml | grep '^-version = ' | cut -d'"' -f2)
-          NEW_VERSION=$(grep '^version = ' pyproject.toml | cut -d'"' -f2)
+          OLD_VERSION=$(git diff HEAD pyproject.toml | grep '^-version = ' | head -1 | cut -d'"' -f2)
+          NEW_VERSION=$(grep '^version = "' pyproject.toml | head -1 | cut -d'"' -f2)
 
           # Commit both changes with arrow notation and create tag
           git add pyproject.toml uv.lock
