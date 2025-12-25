@@ -1,11 +1,11 @@
-name: Benchmark
+name: Benchmarks
 
 on:
   push:
   workflow_dispatch:
 
 jobs:
-  benchmark:
+  benchmarks:
     runs-on: ubuntu-latest
     strategy:
       matrix:
@@ -29,13 +29,16 @@ jobs:
       - name: Install the project
         run: uv sync --all-extras --dev
 
-      - name: Run order book benchmark
+      - name: Run benchmarks
         run: |
-          echo "=== Order Book Benchmark ===" | tee benchmark_results.txt
+          set -e  # Exit immediately if any command fails
           echo "Commit: ${{ github.sha }}" | tee -a benchmark_results.txt
           echo "Date: $(date -u)" | tee -a benchmark_results.txt
-          echo "" | tee -a benchmark_results.txt
+          echo "=== Order Book Benchmark ===" | tee benchmark_results.txt
           uv run python -m benchmarks.order_book_benchmark | tee -a benchmark_results.txt
+          echo "" | tee -a benchmark_results.txt
+          echo "=== Matching Engine Benchmark ===" | tee -a benchmark_results.txt
+          uv run python -m benchmarks.matching_engine_benchmark | tee -a benchmark_results.txt
 
       - name: Upload benchmark results
         uses: actions/upload-artifact@v4

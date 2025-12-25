@@ -15,12 +15,28 @@ class OrderBookCache:
         """
         Creates a new order book cache.
 
+        Uses lazy initialization for the Redis connection to allow importing
+        this module without requiring a Redis server to be available.
+
         Args:
             redis_url: The Redis connection URL.
             max_trade_history: The maximum number of trades to keep in cache.
         """
-        self.redis: Redis = redis.from_url(redis_url)
+        self._redis_url = redis_url
+        self._redis: Redis | None = None
         self.max_trade_history = max_trade_history
+
+    @property
+    def redis(self) -> Redis:
+        """Returns the Redis client, connecting lazily on first access."""
+        if self._redis is None:
+            self._redis = redis.from_url(self._redis_url)
+        return self._redis
+
+    @redis.setter
+    def redis(self, value: Redis) -> None:
+        """Allows setting a mock Redis client for testing."""
+        self._redis = value
 
     def _get_order_book_key(self, stock_id: UUID) -> str:
         """
