@@ -31,6 +31,7 @@ jobs:
 
       - name: Run benchmarks
         run: |
+          set -e  # Exit immediately if any command fails
           echo "=== Order Book Benchmark ===" | tee benchmark_results.txt
           echo "Commit: ${{ github.sha }}" | tee -a benchmark_results.txt
           echo "Date: $(date -u)" | tee -a benchmark_results.txt
