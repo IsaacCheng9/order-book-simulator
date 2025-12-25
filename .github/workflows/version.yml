@@ -35,12 +35,12 @@ jobs:
 
       - name: Bump version and update uv.lock file
         run: |
-          # Configure git first (commitizen needs this for tagging)
+          # Configure git first
           git config --local user.email "github-actions[bot]@users.noreply.github.com"
           git config --local user.name "github-actions[bot]"
 
-          # Run commitizen bump (updates pyproject.toml but doesn't commit yet)
-          cz bump --yes --no-verify
+          # Run commitizen bump (updates files only, no commit)
+          cz bump --yes --files-only
 
           # Update lockfile to match new version
           uv lock
@@ -49,7 +49,9 @@ jobs:
           OLD_VERSION=$(git diff HEAD pyproject.toml | grep '^-version = ' | cut -d'"' -f2)
           NEW_VERSION=$(grep '^version = ' pyproject.toml | cut -d'"' -f2)
 
-          # Commit both changes with arrow notation
+          # Commit both changes with arrow notation and create tag
           git add pyproject.toml uv.lock
           git commit -m "bump: version $OLD_VERSION → $NEW_VERSION"
+          git tag "$NEW_VERSION"
           git push
+          git push --tags
