@@ -281,13 +281,13 @@ def mock_redis():
     streams: dict[str, list[tuple[str, dict]]] = {}
 
     class MockRedis:
-        def set(self, key: str, value: str) -> None:
+        async def set(self, key: str, value: str) -> None:
             mock_data[key] = value
 
-        def get(self, key: str) -> str | None:
+        async def get(self, key: str) -> str | None:
             return mock_data.get(key)
 
-        def keys(self, pattern: str) -> list[str]:
+        async def keys(self, pattern: str) -> list[str]:
             if pattern == "order_book:*":
                 return [k for k in mock_data.keys() if k.startswith("order_book:")]
             if pattern.endswith("*"):
@@ -298,7 +298,7 @@ def mock_redis():
         def exists(self, key: str) -> bool:
             return key in mock_data
 
-        def lrange(self, key: str, start: int, end: int) -> list[str]:
+        async def lrange(self, key: str, start: int, end: int) -> list[str]:
             data = mock_data.get(key, [])
             if not isinstance(data, list):
                 return []
@@ -307,13 +307,13 @@ def mock_redis():
                 return data[start:]
             return data[start : end + 1]
 
-        def rpush(self, key: str, *values: str) -> int:
+        async def rpush(self, key: str, *values: str) -> int:
             if key not in mock_data:
                 mock_data[key] = []
             mock_data[key].extend(values)
             return len(mock_data[key])
 
-        def ltrim(self, key: str, start: int, end: int) -> None:
+        async def ltrim(self, key: str, start: int, end: int) -> None:
             if key in mock_data and isinstance(mock_data[key], list):
                 if end == -1:
                     mock_data[key] = mock_data[key][start:]

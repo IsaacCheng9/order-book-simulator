@@ -51,6 +51,7 @@ jobs:
 
       - name: Run integration benchmarks
         run: |
+          set -e  # Exit immediately if any command fails
           echo "" | tee -a benchmark_results.txt
           echo "=== Integration Benchmarks ===" | tee -a benchmark_results.txt
           uv run --no-project python benchmarks/integration/integration_benchmark.py | tee -a benchmark_results.txt

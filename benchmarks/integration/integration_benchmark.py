@@ -1,12 +1,17 @@
 """
-Integration benchmark using real Redis and Kafka.
+Integration benchmark using real async Redis and Kafka.
 
 This benchmark measures end-to-end performance with actual I/O operations,
 providing realistic production performance metrics. Unlike the unit benchmark
 which uses mocks, this shows the true impact of async Redis and other
 optimisations.
 
-Requires Docker Compose services to be running.
+Requires Docker Compose services to be running - run the following commands:
+
+docker compose up -d redis kafka
+sleep 5
+python benchmarks/integration/integration_benchmark.py
+docker compose down -v
 """
 
 import asyncio
@@ -19,6 +24,11 @@ from aiokafka import AIOKafkaProducer
 
 from order_book_simulator.common.models import OrderSide, OrderType
 from order_book_simulator.matching.matching_engine import MatchingEngine
+
+from redis.asyncio import Redis
+
+from order_book_simulator.common.cache import order_book_cache
+from order_book_simulator.market_data.analytics import MarketDataAnalytics
 
 
 def create_order(
@@ -53,14 +63,8 @@ async def create_engine() -> tuple[MatchingEngine, AIOKafkaProducer]:
     Returns:
         A tuple of (MatchingEngine, AIOKafkaProducer).
     """
-    # Use real Redis (sync for now, will be async in the async Redis branch).
-    from redis import Redis
-    from unittest.mock import AsyncMock
-
-    from order_book_simulator.common.cache import order_book_cache
-
+    # Use real async Redis.
     redis_client = Redis.from_url("redis://localhost:6379/1")
-
     # Override the global cache to use localhost instead of redis:6379.
     order_book_cache.redis = redis_client
 
@@ -71,22 +75,21 @@ async def create_engine() -> tuple[MatchingEngine, AIOKafkaProducer]:
     )
     await producer.start()
 
-    # Mock analytics for now (analytics uses async Redis which isn't on this
-    # branch yet). On the async Redis branch, use real analytics.
-    analytics = AsyncMock()
-    analytics.record_state_from_order_book = AsyncMock()
+    # Use real analytics with async Redis.
+    analytics = MarketDataAnalytics(redis_client)
 
     engine = MatchingEngine(producer, analytics)
     return engine, producer
 
 
-async def benchmark_insertion(num_orders: int = 1_000) -> float:
+async def benchmark_insertion(num_orders: int = 1_000, batch_size: int = 50) -> float:
     """
     Benchmarks the insertion of buy orders into the matching engine with
     varying prices (no matching occurs).
 
     Args:
         num_orders: The number of orders to insert.
+        batch_size: The number of orders to insert in each batch.
 
     Returns:
         The number of orders processed per second.
@@ -100,8 +103,9 @@ async def benchmark_insertion(num_orders: int = 1_000) -> float:
     ]
 
     start = time.perf_counter()
-    for order in orders:
-        await engine.process_order(order)
+    for index in range(0, len(orders), batch_size):
+        batch = orders[index : index + batch_size]
+        await asyncio.gather(*[engine.process_order(order) for order in batch])
     elapsed = time.perf_counter() - start
 
     await producer.stop()
@@ -109,18 +113,20 @@ async def benchmark_insertion(num_orders: int = 1_000) -> float:
     orders_per_second = num_orders / elapsed
     print(
         f"Inserted {num_orders:,} orders in {elapsed:.3f} seconds "
-        f"({orders_per_second:,.2f} orders/second)"
+        f"({orders_per_second:,.2f} orders/second) "
+        f"with batch size {batch_size}"
     )
     return orders_per_second
 
 
-async def benchmark_matching(num_orders: int = 1_000) -> float:
+async def benchmark_matching(num_orders: int = 1_000, batch_size: int = 50) -> float:
     """
     Benchmarks the matching logic by inserting alternating buy and sell
     orders at the same price.
 
     Args:
         num_orders: The number of orders to insert.
+        batch_size: The number of orders to process concurrently.
 
     Returns:
         The number of orders processed per second.
@@ -135,8 +141,9 @@ async def benchmark_matching(num_orders: int = 1_000) -> float:
     ]
 
     start = time.perf_counter()
-    for order in orders:
-        await engine.process_order(order)
+    for index in range(0, len(orders), batch_size):
+        batch = orders[index : index + batch_size]
+        await asyncio.gather(*[engine.process_order(order) for order in batch])
     elapsed = time.perf_counter() - start
 
     await producer.stop()
@@ -144,13 +151,14 @@ async def benchmark_matching(num_orders: int = 1_000) -> float:
     orders_per_second = num_orders / elapsed
     print(
         f"Matched {num_orders:,} orders in {elapsed:.3f} seconds "
-        f"({orders_per_second:,.2f} orders/second)"
+        f"({orders_per_second:,.2f} orders/second) "
+        f"with batch size {batch_size}"
     )
     return orders_per_second
 
 
 async def benchmark_deep_book(
-    num_levels: int = 100, orders_per_level: int = 10
+    num_levels: int = 100, orders_per_level: int = 10, batch_size: int = 50
 ) -> float:
     """
     Benchmarks the insertion of buy orders into a deep order book (many price
@@ -159,6 +167,7 @@ async def benchmark_deep_book(
     Args:
         num_levels: The number of price levels to insert.
         orders_per_level: The number of orders to insert per price level.
+        batch_size: The number of orders to process concurrently.
 
     Returns:
         The number of orders processed per second.
@@ -173,8 +182,9 @@ async def benchmark_deep_book(
     ]
 
     start = time.perf_counter()
-    for order in orders:
-        await engine.process_order(order)
+    for index in range(0, len(orders), batch_size):
+        batch = orders[index : index + batch_size]
+        await asyncio.gather(*[engine.process_order(order) for order in batch])
     elapsed = time.perf_counter() - start
 
     await producer.stop()
@@ -183,7 +193,8 @@ async def benchmark_deep_book(
     print(
         f"Inserted {total_orders:,} orders, with {num_levels:,} price levels "
         f"and {orders_per_level:,} orders per level into a deep book "
-        f"in {elapsed:.3f} seconds ({orders_per_second:,.2f} orders/second)"
+        f"in {elapsed:.3f} seconds ({orders_per_second:,.2f} orders/second) "
+        f"with batch size {batch_size}"
     )
     return orders_per_second
 
@@ -191,16 +202,17 @@ async def benchmark_deep_book(
 async def main() -> None:
     """Runs all integration benchmarks."""
     print("=" * 80)
-    print("Integration Benchmark (Real Redis + Kafka)")
+    print("Integration Benchmark (Real Async Redis + Kafka)")
     print("=" * 80)
     print()
-    print("Note: These results reflect actual I/O performance and show the")
-    print("true impact of async Redis and other optimisations.")
+    print("Note: These results reflect actual I/O performance with async Redis")
+    print("and show the true impact of async optimisations.")
+    print("Batch size: 50 concurrent orders (optimal for this setup)")
     print()
 
-    await benchmark_insertion(1_000)
-    await benchmark_matching(1_000)
-    await benchmark_deep_book(100, 10)  # 1,000 orders total
+    await benchmark_insertion(5_000, batch_size=50)
+    await benchmark_matching(5_000, batch_size=50)
+    await benchmark_deep_book(100, 50, batch_size=50)  # 5,000 orders total
 
 
 if __name__ == "__main__":

@@ -60,7 +60,7 @@ class MatchingEngine:
                 trade["buyer_order_id"] = str(trade["buyer_order_id"])
                 trade["seller_order_id"] = str(trade["seller_order_id"])
                 trade["stock_id"] = str(trade["stock_id"])
-            order_book_cache.append_trades(stock_id, trades)
+            await order_book_cache.append_trades(stock_id, trades)
 
         # Get snapshot for Kafka payload (already string-serialised).
         snapshot = order_book.get_full_snapshot()
@@ -105,7 +105,7 @@ class MatchingEngine:
         trades = order_book.add_order(order_message)
 
         # Cache the order book state
-        order_book_cache.set_order_book(stock_id, order_book.get_full_snapshot())
+        await order_book_cache.set_order_book(stock_id, order_book.get_full_snapshot())
 
         # Always publish market data updates, even if no trades occurred.
         await self._publish_market_data(stock_id, ticker, order_book, trades or [])
