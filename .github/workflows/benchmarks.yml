@@ -34,6 +34,7 @@ jobs:
           set -e  # Exit immediately if any command fails
           echo "Commit: ${{ github.sha }}" | tee -a benchmark_results.txt
           echo "Date: $(date -u)" | tee -a benchmark_results.txt
+          echo ""
           echo "=== Order Book Benchmark ===" | tee benchmark_results.txt
           uv run python -m benchmarks.order_book_benchmark | tee -a benchmark_results.txt
           echo "" | tee -a benchmark_results.txt
