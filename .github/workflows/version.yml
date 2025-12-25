@@ -3,7 +3,9 @@ name: Version
 on:
   push:
     branches:
-      - main
+      # TODO: Change this to main when ready to release.
+      - update-version-in-uv-lock-on-version-bump
+        # - main
 
 permissions:
   contents: write
@@ -19,12 +21,35 @@ jobs:
         with:
           fetch-depth: 0
           token: "${{ secrets.GITHUB_TOKEN }}"
-      - id: cz
-        name: Create bump and changelog
-        uses: commitizen-tools/commitizen-action@master
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
         with:
-          github_token: ${{ secrets.GITHUB_TOKEN }}
-          # Avoid creating a CHANGELOG.md file.
-          changelog: false
-      - name: Print version
-        run: echo "Bumped to version ${{ steps.cz.outputs.version }}"
+          python-version: "3.14"
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@main
+
+      - name: Install commitizen
+        run: pip install commitizen
+
+      - name: Bump version and update uv.lock file
+        run: |
+          # Run commitizen bump (updates pyproject.toml but doesn't commit yet)
+          cz bump --yes --no-verify
+
+          # Update lockfile to match new version
+          uv lock
+
+          # Configure git
+          git config --local user.email "github-actions[bot]@users.noreply.github.com"
+          git config --local user.name "github-actions[bot]"
+
+          # Get old and new versions for commit message
+          OLD_VERSION=$(git diff HEAD pyproject.toml | grep '^-version = ' | cut -d'"' -f2)
+          NEW_VERSION=$(grep '^version = ' pyproject.toml | cut -d'"' -f2)
+
+          # Commit both changes with arrow notation
+          git add pyproject.toml uv.lock
+          git commit -m "bump: version $OLD_VERSION → $NEW_VERSION"
+          git push
