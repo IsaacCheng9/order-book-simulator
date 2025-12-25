@@ -1,6 +1,9 @@
 """
 A benchmark harness for the order book.
 
+The order book benchmark measures the raw performance of the matching logic and
+data structures, so it will demonstrate a higher throughput.
+
 This can be used to measure the performance of the order book under various
 conditions and before / after changes to the code implementation.
 """

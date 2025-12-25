@@ -143,15 +143,15 @@ uv run python examples/market_simulator_usage.py
 The project includes two types of benchmarks:
 
 ```bash
-# Benchmark the core order book data structure (pure Python, synchronous)
+# Benchmark the core order book data structure (pure Python, synchronous).
 uv run python benchmarks/order_book_benchmark.py
 
-# Benchmark the full matching engine with async I/O orchestration
+# Benchmark the full matching engine with async I/O orchestration.
 uv run python benchmarks/matching_engine_benchmark.py
 ```
 
 The order book benchmark measures the raw performance of the matching logic and
-data structures, so it should demonstrate a higher throughput. The matching
-engine benchmark measures end-to-end throughput including Redis caching, Kafka
+data structures, so it will demonstrate a higher throughput. The matching engine
+benchmark measures end-to-end throughput including Redis caching, Kafka
 messaging, and analytics, reflecting realistic system performance, meaning it
-should demonstrate a lower throughput.
+will demonstrate a lower throughput.
