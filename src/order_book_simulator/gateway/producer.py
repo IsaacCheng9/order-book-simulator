@@ -1,5 +1,5 @@
 import asyncio
-import json
+import orjson
 import logging
 from typing import Any
 
@@ -112,7 +112,7 @@ class OrderProducer:
         try:
             await self.producer.send_and_wait(
                 self.topic,
-                json.dumps(kafka_record).encode("utf-8"),
+                orjson.dumps(kafka_record),
             )
             logger.info(f"Order {kafka_record['id']} successfully published to Kafka")
         except Exception as e:
@@ -135,7 +135,7 @@ class OrderProducer:
         try:
             await self.producer.send_and_wait(
                 self.topic,
-                json.dumps({"type": "health_check"}).encode("utf-8"),
+                orjson.dumps({"type": "health_check"}),
                 partition=0,
             )
             return True

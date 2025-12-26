@@ -1,4 +1,4 @@
-import json
+import orjson
 from typing import Any
 from uuid import UUID
 
@@ -60,7 +60,7 @@ class OrderBookCache:
         key = self._get_order_book_key(stock_id)
         await self.redis.set(
             key,  # type: ignore[arg-type]
-            json.dumps(snapshot, default=str),
+            orjson.dumps(snapshot, default=str),
         )
 
     async def get_order_book(self, stock_id: UUID) -> dict[str, Any] | None:
@@ -82,7 +82,7 @@ class OrderBookCache:
             if isinstance(raw_data, (bytes, bytearray))
             else str(raw_data)
         )
-        return json.loads(data)
+        return orjson.loads(data)
 
     async def get_all_order_books(self) -> dict[str, dict[str, Any]]:
         """
@@ -106,7 +106,7 @@ class OrderBookCache:
                     if isinstance(raw_data, (bytes, bytearray))
                     else str(raw_data)
                 )
-                result[stock_id] = json.loads(data)  # type: ignore
+                result[stock_id] = orjson.loads(data)  # type: ignore
         return dict(sorted(result.items()))
 
     def _get_trades_key(self, stock_id: UUID) -> str:
@@ -126,7 +126,7 @@ class OrderBookCache:
         """
         key = self._get_trades_key(stock_id)
         raw_data = await self.redis.lrange(key, -limit, -1)  # type: ignore[arg-type]
-        return [json.loads(data) for data in reversed(raw_data)]  # type: ignore[arg-type]
+        return [orjson.loads(data) for data in reversed(raw_data)]  # type: ignore[arg-type]
 
     async def append_trades(self, stock_id: UUID, trades: list[dict]) -> None:
         """
@@ -140,7 +140,7 @@ class OrderBookCache:
             trades: The list of trades to append.
         """
         key = self._get_trades_key(stock_id)
-        serialised_trades = [json.dumps(trade, default=str) for trade in trades]
+        serialised_trades = [orjson.dumps(trade, default=str) for trade in trades]
         await self.redis.rpush(key, *serialised_trades)  # type: ignore[arg-type]
         # Enforce the maximum trade history.
         await self.redis.ltrim(key, -self.max_trade_history, -1)  # type: ignore[arg-type]

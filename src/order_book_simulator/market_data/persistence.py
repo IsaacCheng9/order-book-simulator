@@ -1,4 +1,4 @@
-import json
+import orjson
 from datetime import datetime, timezone
 from decimal import Decimal
 from typing import Any
@@ -29,8 +29,8 @@ async def persist_market_snapshot(
         {
             "stock_id": stock_id,
             "timestamp": datetime.now(),
-            "bids": json.dumps(snapshot["bids"]),
-            "asks": json.dumps(snapshot["asks"]),
+            "bids": orjson.dumps(snapshot["bids"]),
+            "asks": orjson.dumps(snapshot["asks"]),
         },
     )
 
