@@ -59,7 +59,7 @@ class OrderConsumer:
         try:
             if message.value is None:
                 return
-            order_data = orjson.loads(message.value.decode("utf-8"))
+            order_data = orjson.loads(message.value)
             # Skip health check messages
             if order_data.get("type") == "health_check":
                 return

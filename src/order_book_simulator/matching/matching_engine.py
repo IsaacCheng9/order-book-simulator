@@ -72,7 +72,7 @@ class MatchingEngine:
         }
         await self.producer.send_and_wait(
             "market-data",
-            orjson.dumps(payload).encode("utf-8"),
+            orjson.dumps(payload),
         )
 
         # Record analytics using the actual order book price levels (not the

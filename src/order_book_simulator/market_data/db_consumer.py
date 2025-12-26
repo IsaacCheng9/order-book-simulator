@@ -84,11 +84,7 @@ class MarketDataDBConsumer:
 
         try:
             async for message in self.consumer:
-                data = (
-                    orjson.loads(message.value.decode("utf-8"))
-                    if message.value
-                    else None
-                )
+                data = orjson.loads(message.value) if message.value else None
                 if not data:
                     continue
                 self.batch.append(data)
