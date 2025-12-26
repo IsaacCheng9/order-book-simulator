@@ -1,5 +1,4 @@
 import asyncio
-import json
 import logging
 import multiprocessing as mp
 import time
@@ -8,6 +7,7 @@ from inspect import isawaitable
 from typing import Awaitable, Callable
 
 import aiohttp
+import orjson
 
 from order_book_simulator.common.models import OrderRequest
 from order_book_simulator.simulator.market_simulator_stats import MarketSimulatorStats
@@ -366,7 +366,7 @@ class MarketSimulator:
         async with aiohttp.ClientSession(
             connector=connector,
             timeout=timeout,
-            json_serialize=json.dumps,
+            json_serialize=lambda obj: orjson.dumps(obj).decode("utf-8"),
             raise_for_status=True,
         ) as session:
             try:

@@ -1,5 +1,5 @@
 import asyncio
-import json
+import orjson
 import logging
 import time
 from uuid import UUID
@@ -85,7 +85,9 @@ class MarketDataDBConsumer:
         try:
             async for message in self.consumer:
                 data = (
-                    json.loads(message.value.decode("utf-8")) if message.value else None
+                    orjson.loads(message.value.decode("utf-8"))
+                    if message.value
+                    else None
                 )
                 if not data:
                     continue

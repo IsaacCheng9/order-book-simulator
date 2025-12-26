@@ -1,4 +1,4 @@
-import json
+import orjson
 from datetime import datetime, timezone
 from decimal import Decimal
 from typing import Any
@@ -72,7 +72,7 @@ class MatchingEngine:
         }
         await self.producer.send_and_wait(
             "market-data",
-            json.dumps(payload).encode("utf-8"),
+            orjson.dumps(payload).encode("utf-8"),
         )
 
         # Record analytics using the actual order book price levels (not the

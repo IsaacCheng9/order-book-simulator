@@ -1,5 +1,5 @@
 import asyncio
-import json
+import orjson
 import logging
 from datetime import datetime, timezone
 
@@ -59,7 +59,7 @@ class OrderConsumer:
         try:
             if message.value is None:
                 return
-            order_data = json.loads(message.value.decode("utf-8"))
+            order_data = orjson.loads(message.value.decode("utf-8"))
             # Skip health check messages
             if order_data.get("type") == "health_check":
                 return
