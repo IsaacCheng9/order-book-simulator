@@ -181,6 +181,33 @@ class OrderBook:
             for fill in fills
         ]
 
+    def cancel_order(self, order_id: UUID) -> bool:
+        """
+        Cancels an order from the order book.
+
+        Args:
+            order_id: The ID of the order to cancel.
+
+        Returns:
+            True if the order was cancelled, False otherwise.
+        """
+        order = self.order_id_to_order.get(order_id)
+        if not order:
+            return False
+
+        # Remove from the price level if it's a limit order.
+        levels = self.bid_levels if order.side == OrderSide.BUY else self.ask_levels
+        if order.price and order.price in levels:
+            price_level = levels[order.price]
+            if order_id in price_level.orders:
+                del price_level.orders[order_id]
+                if not price_level.orders:
+                    del levels[order.price]
+
+        # Remove from the order tracking.
+        del self.order_id_to_order[order_id]
+        return True
+
     def get_full_snapshot(self) -> dict:
         """
         Returns a snapshot of the current full order book state.
