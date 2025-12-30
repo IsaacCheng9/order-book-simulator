@@ -51,3 +51,66 @@ async def test_publishes_market_data_on_trade(
 
     # We expect Kafka send_and_wait to be called for each order processed.
     assert mock_kafka_producer.send_and_wait.call_count == 2
+
+
+@pytest.mark.asyncio
+async def test_cancel_order_success(
+    matching_engine: MatchingEngine, mock_kafka_producer: AsyncMock
+):
+    """Tests successful order cancellation through the matching engine."""
+    stock_id = uuid4()
+    order = create_order(stock_id)
+
+    # Add order first.
+    await matching_engine.process_order(order)
+    assert stock_id in matching_engine.order_books
+
+    # Cancel it.
+    cancel_msg = {
+        "type": "cancel",
+        "order_id": order["id"],
+        "stock_id": str(stock_id),
+        "ticker": "TICKER",
+    }
+    result = await matching_engine.cancel_order(cancel_msg)
+
+    assert result["success"] is True
+    # Should have published market data for both the order and the cancellation.
+    assert mock_kafka_producer.send_and_wait.call_count == 2
+
+
+@pytest.mark.asyncio
+async def test_cancel_order_not_found(matching_engine: MatchingEngine):
+    """Tests cancelling an order that doesn't exist."""
+    stock_id = uuid4()
+
+    # Create an order book by adding an order.
+    order = create_order(stock_id)
+    await matching_engine.process_order(order)
+
+    # Try to cancel a different order.
+    cancel_msg = {
+        "type": "cancel",
+        "order_id": str(uuid4()),  # Different order ID.
+        "stock_id": str(stock_id),
+        "ticker": "TICKER",
+    }
+    result = await matching_engine.cancel_order(cancel_msg)
+
+    assert result["success"] is False
+    assert result["reason"] == "Order not found"
+
+
+@pytest.mark.asyncio
+async def test_cancel_order_book_not_found(matching_engine: MatchingEngine):
+    """Tests cancelling an order for a stock with no order book."""
+    cancel_msg = {
+        "type": "cancel",
+        "order_id": str(uuid4()),
+        "stock_id": str(uuid4()),  # No order book exists for this stock.
+        "ticker": "TICKER",
+    }
+    result = await matching_engine.cancel_order(cancel_msg)
+
+    assert result["success"] is False
+    assert result["reason"] == "Order book not found"

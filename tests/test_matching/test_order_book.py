@@ -163,3 +163,69 @@ def test_market_order_with_price_raises_error(order_book: OrderBook) -> None:
     # Prices shouldn't be provided for market orders.
     with pytest.raises(ValueError, match="Market orders should not have a price"):
         order_book.add_order(market_buy)
+
+
+def test_cancel_order_success(order_book: OrderBook) -> None:
+    """Tests successful order cancellation."""
+    order = create_order(price=Decimal("100"), quantity=Decimal("10"))
+    order_book.add_order(order)
+
+    assert order["id"] in order_book.order_id_to_order
+    assert Decimal("100") in order_book.bid_levels
+
+    success = order_book.cancel_order(order["id"])
+
+    assert success is True
+    assert order["id"] not in order_book.order_id_to_order
+
+
+def test_cancel_order_not_found(order_book: OrderBook) -> None:
+    """Tests cancelling a non-existent order."""
+    success = order_book.cancel_order(uuid4())
+    assert success is False
+
+
+def test_cancel_order_removes_empty_price_level(order_book: OrderBook) -> None:
+    """Tests that empty price levels are removed after cancellation."""
+    order = create_order(price=Decimal("100"), quantity=Decimal("10"))
+    order_book.add_order(order)
+
+    assert Decimal("100") in order_book.bid_levels
+
+    order_book.cancel_order(order["id"])
+
+    assert Decimal("100") not in order_book.bid_levels
+
+
+def test_cancel_order_preserves_other_orders_at_same_price(
+    order_book: OrderBook,
+) -> None:
+    """Tests that cancelling one order doesn't affect others at the same price."""
+    order1 = create_order(price=Decimal("100"), quantity=Decimal("10"))
+    order2 = create_order(price=Decimal("100"), quantity=Decimal("5"))
+    order_book.add_order(order1)
+    order_book.add_order(order2)
+
+    assert order_book.bid_levels[Decimal("100")].quantity == Decimal("15")
+
+    order_book.cancel_order(order1["id"])
+
+    assert Decimal("100") in order_book.bid_levels
+    assert order_book.bid_levels[Decimal("100")].quantity == Decimal("5")
+    assert order2["id"] in order_book.order_id_to_order
+
+
+def test_cancel_sell_order(order_book: OrderBook) -> None:
+    """Tests cancelling a sell order."""
+    order = create_order(
+        price=Decimal("100"), quantity=Decimal("10"), side=OrderSide.SELL
+    )
+    order_book.add_order(order)
+
+    assert Decimal("100") in order_book.ask_levels
+
+    success = order_book.cancel_order(order["id"])
+
+    assert success is True
+    assert Decimal("100") not in order_book.ask_levels
+    assert order["id"] not in order_book.order_id_to_order
