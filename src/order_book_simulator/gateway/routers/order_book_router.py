@@ -3,7 +3,7 @@ from decimal import Decimal
 from typing import Any
 from uuid import UUID, uuid4
 
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from order_book_simulator.common.cache import order_book_cache
@@ -13,7 +13,6 @@ from order_book_simulator.database.queries import (
     get_stock_by_ticker,
 )
 from order_book_simulator.gateway.app_state import app_state
-from order_book_simulator.gateway.producer import OrderProducer
 from order_book_simulator.gateway.validation import validate_order
 
 order_book_router = APIRouter()
@@ -24,7 +23,6 @@ async def cancel_order(
     order_id: UUID,
     stock_id: UUID,
     ticker: str,
-    request: Request,
 ) -> dict[str, str]:
     """
     Cancels an existing order.
@@ -33,13 +31,15 @@ async def cancel_order(
         order_id: The ID of the order to cancel.
         stock_id: The ID of the stock to cancel the order for.
         ticker: The ticker symbol of the stock to cancel the order for.
-        request: The FastAPI request object.
 
     Returns:
         Confirmation of the cancelled order.
     """
-    producer: OrderProducer = request.app.state.producer
-    await producer.cancel_order(order_id, stock_id, ticker)
+    if app_state.producer is None:
+        raise HTTPException(
+            status_code=503, detail="Order processing service is unavailable"
+        )
+    await app_state.producer.cancel_order(order_id, stock_id, ticker)
     return {
         "status": "accepted",
         "order_id": str(order_id),
