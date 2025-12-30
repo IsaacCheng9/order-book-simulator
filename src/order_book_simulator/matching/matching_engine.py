@@ -96,7 +96,7 @@ class MatchingEngine:
         Returns:
             Dictionary with cancellation result.
         """
-        order_id = UUID(cancel_message["order_id"])
+        order_id = cancel_message["order_id"]
         stock_id = UUID(cancel_message["stock_id"])
 
         order_book = self.order_books.get(stock_id)
