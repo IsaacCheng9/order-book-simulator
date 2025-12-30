@@ -60,35 +60,46 @@ class OrderConsumer:
             if message.value is None:
                 return
             order_data = orjson.loads(message.value)
+
             # Skip health check messages
-            if order_data.get("type") == "health_check":
-                return
+            match order_data.get("type"):
+                case "health_check":
+                    return
+                case "cancel":
+                    order_id = order_data["order_id"]
+                    logger.info(f"Processing cancellation: {order_id=}")
+                    result = await self.matching_engine.cancel_order(order_data)
+                    logger.info(f"Cancelled order {order_id=}: {result}")
+                    return
+                case "order":
+                    order_id = order_data["id"]
+                    # Track the latency for new orders.
+                    gateway_time = datetime.fromisoformat(
+                        order_data["gateway_received_at"]
+                    )
+                    kafka_latency = (
+                        datetime.now(timezone.utc) - gateway_time
+                    ).total_seconds() * 1000
+                    logger.info(
+                        f"Processing order: {order_id=}, "
+                        f"kafka_latency={kafka_latency:.2f}ms"
+                    )
 
-            gateway_time = datetime.fromisoformat(order_data["gateway_received_at"])
-            kafka_latency = (
-                datetime.now(timezone.utc) - gateway_time
-            ).total_seconds() * 1000
-
-            logger.info(
-                f"Processing order: id={order_data['id']}, "
-                f"kafka_latency={kafka_latency:.2f}ms"
-            )
-
-            start_process = datetime.now(timezone.utc)
-            await self.matching_engine.process_order(order_data)
-            process_time = (
-                datetime.now(timezone.utc) - start_process
-            ).total_seconds() * 1000
-
-            total_latency = (
-                datetime.now(timezone.utc) - gateway_time
-            ).total_seconds() * 1000
-
-            logger.info(
-                f"Order processed: id={order_data['id']}, "
-                f"matching_time={process_time:.2f}ms, "
-                f"total_latency={total_latency:.2f}ms"
-            )
+                    start_process = datetime.now(timezone.utc)
+                    await self.matching_engine.process_order(order_data)
+                    process_time = (
+                        datetime.now(timezone.utc) - start_process
+                    ).total_seconds() * 1000
+                    total_latency = (
+                        datetime.now(timezone.utc) - gateway_time
+                    ).total_seconds() * 1000
+                    logger.info(
+                        f"Order processed: {order_id=}, "
+                        f"matching_time={process_time:.2f}ms, "
+                        f"total_latency={total_latency:.2f}ms"
+                    )
+                case _:
+                    raise ValueError(f"Unknown order type: {order_data.get('type')}")
         except Exception as e:
             logger.error(f"Error processing message: {e}")
 

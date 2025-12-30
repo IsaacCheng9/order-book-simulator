@@ -1,3 +1,5 @@
+import datetime
+from uuid import UUID
 import asyncio
 import orjson
 import logging
@@ -83,6 +85,45 @@ class OrderProducer:
             await self.producer.stop()
             self.producer = None
             logger.info("Kafka producer stopped")
+
+    async def cancel_order(self, order_id: UUID, stock_id: UUID, ticker: str) -> None:
+        """
+        Publishes an order cancellation to Kafka.
+
+        Args:
+            order_id: The ID of the order to cancel.
+            stock_id: The ID of the stock to cancel the order for.
+            ticker: The ticker symbol of the stock to cancel the order for.
+        """
+        if not self.producer:
+            raise HTTPException(
+                status_code=503,
+                detail="Order processing service is unavailable",
+            )
+
+        cancel_record = {
+            "type": "cancel",
+            "order_id": str(order_id),
+            "stock_id": str(stock_id),
+            "ticker": ticker,
+            "cancelled_at": datetime.datetime.now(datetime.timezone.utc).isoformat(),
+        }
+        logger.info(f"Publishing cancellation for order: {order_id}")
+
+        try:
+            await self.producer.send_and_wait(
+                self.topic,
+                orjson.dumps(cancel_record),
+            )
+            logger.info(
+                f"Order cancellation for {order_id} successfully published to Kafka"
+            )
+        except Exception as exc:
+            logger.error(f"Failed to publish cancellation to Kafka: {exc}")
+            raise HTTPException(
+                status_code=500,
+                detail=f"Failed to publish order cancellation to Kafka: {exc}",
+            )
 
     async def send_order(self, order_record: dict[str, Any]) -> None:
         """Publishes an order to Kafka for processing by the matching engine."""

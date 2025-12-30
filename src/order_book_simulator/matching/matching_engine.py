@@ -86,6 +86,38 @@ class MatchingEngine:
             last_trade_quantity=Decimal(trades[-1]["quantity"]) if trades else None,
         )
 
+    async def cancel_order(self, cancel_message: dict[str, Any]) -> dict[str, Any]:
+        """
+        Cancels an order from the order book.
+
+        Args:
+            cancel_message: Dictionary containing order_id and stock_id.
+
+        Returns:
+            Dictionary with cancellation result.
+        """
+        order_id = cancel_message["order_id"]
+        stock_id = UUID(cancel_message["stock_id"])
+
+        order_book = self.order_books.get(stock_id)
+        if not order_book:
+            return {"success": False, "reason": "Order book not found"}
+
+        is_success = order_book.cancel_order(order_id)
+        if not is_success:
+            return {"success": False, "reason": "Order not found"}
+
+        # Update the order book cache.
+        await order_book_cache.set_order_book(stock_id, order_book.get_full_snapshot())
+        # Publish market data update.
+        await self._publish_market_data(
+            stock_id,
+            cancel_message["ticker"],
+            order_book,
+            [],  # No trades from the cancellation.
+        )
+        return {"success": True, "reason": "Order cancelled"}
+
     async def process_order(self, order_message: dict[str, Any]) -> None:
         """
         Processes an incoming order message.
