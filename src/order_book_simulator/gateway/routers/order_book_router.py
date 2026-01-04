@@ -7,11 +7,14 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from order_book_simulator.common.cache import order_book_cache
-from order_book_simulator.common.models import OrderRequest, OrderResponse, OrderStatus
-from order_book_simulator.database.connection import get_db
-from order_book_simulator.database.queries import (
-    get_stock_by_ticker,
+from order_book_simulator.common.models import (
+    OrderRecord,
+    OrderRequest,
+    OrderResponse,
+    OrderStatus,
 )
+from order_book_simulator.database.connection import get_db
+from order_book_simulator.database.queries import get_stock_by_ticker
 from order_book_simulator.gateway.app_state import app_state
 from order_book_simulator.gateway.validation import validate_order
 
@@ -68,11 +71,17 @@ async def create_order(order_request: OrderRequest, db=Depends(get_db)):
     async with db.begin():
         stock = await validate_order(order_request, db)
 
-        order_record = {
+        order_record: OrderRecord = {
             "id": uuid4(),
             "stock_id": stock.id,
             "ticker": stock.ticker,
-            **order_request.model_dump(),
+            "user_id": order_request.user_id,
+            "type": order_request.type,
+            "side": order_request.side,
+            "price": order_request.price,
+            "quantity": order_request.quantity,
+            "time_in_force": order_request.time_in_force,
+            "client_order_id": order_request.client_order_id,
             "status": OrderStatus.PENDING,
             "filled_quantity": Decimal("0"),
             "total_fee": Decimal("0"),
@@ -81,7 +90,20 @@ async def create_order(order_request: OrderRequest, db=Depends(get_db)):
 
         await app_state.producer.send_order(order_record)
         return OrderResponse(
-            **order_record, created_at=start_time, updated_at=start_time
+            id=order_record["id"],
+            user_id=order_record["user_id"],
+            ticker=order_record["ticker"],
+            type=order_record["type"],
+            side=order_record["side"],
+            status=order_record["status"],
+            price=order_record["price"],
+            quantity=order_record["quantity"],
+            filled_quantity=order_record["filled_quantity"],
+            total_fee=order_record["total_fee"],
+            time_in_force=order_record["time_in_force"],
+            client_order_id=order_record["client_order_id"],
+            created_at=start_time,
+            updated_at=start_time,
         )
 
 
