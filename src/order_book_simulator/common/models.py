@@ -2,6 +2,7 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from decimal import Decimal
 from enum import Enum
+from typing import TypedDict
 from uuid import UUID
 
 from pydantic import BaseModel
@@ -51,6 +52,25 @@ class OrderResponse(BaseModel):
     client_order_id: str | None
     created_at: datetime
     updated_at: datetime
+
+
+class OrderRecord(TypedDict):
+    """Typed dict for order records sent to the producer."""
+
+    id: UUID
+    stock_id: UUID
+    ticker: str
+    user_id: UUID
+    type: OrderType
+    side: OrderSide
+    price: Decimal | None
+    quantity: Decimal
+    time_in_force: str | None
+    client_order_id: str | None
+    status: OrderStatus
+    filled_quantity: Decimal
+    total_fee: Decimal
+    gateway_received_at: str
 
 
 class Stock(BaseModel):
