@@ -1,12 +1,13 @@
-import datetime
-from uuid import UUID
 import asyncio
-import orjson
+import datetime
 import logging
-from typing import Any
+from uuid import UUID
 
+import orjson
 from aiokafka import AIOKafkaProducer
 from fastapi import HTTPException
+
+from order_book_simulator.common.models import OrderRecord
 
 logger = logging.getLogger(__name__)
 
@@ -125,8 +126,16 @@ class OrderProducer:
                 detail=f"Failed to publish order cancellation to Kafka: {exc}",
             )
 
-    async def send_order(self, order_record: dict[str, Any]) -> None:
-        """Publishes an order to Kafka for processing by the matching engine."""
+    async def send_order(self, order_record: OrderRecord) -> None:
+        """
+        Publishes an order to Kafka for processing by the matching engine.
+
+        Args:
+            order_record: The order record to send to Kafka.
+
+        Raises:
+            HTTPException: If the producer is not available.
+        """
         if not self.producer:
             raise HTTPException(
                 status_code=503,
