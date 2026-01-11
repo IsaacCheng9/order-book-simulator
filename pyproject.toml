@@ -61,3 +61,6 @@ version_files = [
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/order_book_simulator"]
+
+[tool.ty.environment]
+extra-paths = ["benchmarks/unit"]
