@@ -59,7 +59,7 @@ class OrderBookCache:
         """
         key = self._get_order_book_key(stock_id)
         await self.redis.set(
-            key,  # type: ignore[arg-type]
+            key,
             orjson.dumps(snapshot, default=str),
         )
 
@@ -74,7 +74,7 @@ class OrderBookCache:
             The order book snapshot if it exists, None otherwise.
         """
         key = self._get_order_book_key(stock_id)
-        raw_data = await self.redis.get(key)  # type: ignore[arg-type]
+        raw_data = await self.redis.get(key)
         if not raw_data:
             return None
         data = (
@@ -93,7 +93,7 @@ class OrderBookCache:
         """
         keys = await self.redis.keys("order_book:*")
         result: dict[str, dict[str, Any]] = {}
-        for key in keys:  # type: ignore
+        for key in keys:
             stock_id = (
                 key.split(":")[-1]
                 if isinstance(key, str)
@@ -106,7 +106,7 @@ class OrderBookCache:
                     if isinstance(raw_data, (bytes, bytearray))
                     else str(raw_data)
                 )
-                result[stock_id] = orjson.loads(data)  # type: ignore
+                result[stock_id] = orjson.loads(data)
         return dict(sorted(result.items()))
 
     def _get_trades_key(self, stock_id: UUID) -> str:
@@ -126,7 +126,7 @@ class OrderBookCache:
         """
         key = self._get_trades_key(stock_id)
         raw_data = await self.redis.lrange(key, -limit, -1)  # type: ignore[arg-type]
-        return [orjson.loads(data) for data in reversed(raw_data)]  # type: ignore[arg-type]
+        return [orjson.loads(data) for data in reversed(raw_data)]
 
     async def append_trades(self, stock_id: UUID, trades: list[dict]) -> None:
         """
