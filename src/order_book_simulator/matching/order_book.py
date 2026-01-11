@@ -20,9 +20,7 @@ class OrderBook:
 
     def __init__(self, stock_id: UUID):
         self.stock_id = stock_id
-        self.bid_levels: SortedDict[Decimal, PriceLevel] = SortedDict(
-            lambda x: -x  # type: ignore
-        )
+        self.bid_levels: SortedDict[Decimal, PriceLevel] = SortedDict(lambda x: -x)
         self.ask_levels: SortedDict[Decimal, PriceLevel] = SortedDict()
         # Map the order ID to the order object for O(1) look-ups, which enables
         # us to fetch order details and cancel / modify orders efficiently.

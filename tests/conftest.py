@@ -356,7 +356,7 @@ def mock_redis():
             ]
             return [] if not entries else [(key, entries[: count or len(entries)])]
 
-    order_book_cache.redis = MockRedis()  # type: ignore
+    order_book_cache.redis = MockRedis()  # type: ignore[assignment]
     yield
     mock_data.clear()
 
