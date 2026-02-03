@@ -6,7 +6,14 @@ COPY pyproject.toml uv.lock README.md ./
 COPY src/ ./src/
 COPY resources/ ./resources/
 
-RUN apt-get update && apt-get install -y netcat-traditional && rm -rf /var/lib/apt/lists/*
-RUN pip install uv && uv sync --frozen
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    gcc \
+    libc-dev \
+    zlib1g-dev \
+    netcat-traditional \
+    && pip install uv && uv sync --frozen \
+    && apt-get purge -y gcc libc-dev zlib1g-dev \
+    && apt-get autoremove -y \
+    && rm -rf /var/lib/apt/lists/*
 
 CMD ["uv", "run", "uvicorn", "order_book_simulator.gateway.app:app", "--host", "0.0.0.0", "--port", "8000"]

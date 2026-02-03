@@ -5,6 +5,13 @@ WORKDIR /app
 COPY pyproject.toml uv.lock README.md ./
 COPY src/ ./src/
 
-RUN pip install uv && uv sync --frozen
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    gcc \
+    libc-dev \
+    zlib1g-dev \
+    && pip install uv && uv sync --frozen \
+    && apt-get purge -y gcc libc-dev zlib1g-dev \
+    && apt-get autoremove -y \
+    && rm -rf /var/lib/apt/lists/*
 
 CMD ["uv", "run", "python", "-m", "order_book_simulator.market_data.db_consumer"]
