@@ -19,7 +19,7 @@ def create_order(stock_id: UUID) -> dict[str, Any]:
         "price": Decimal("100"),
         "quantity": Decimal("10"),
         "side": OrderSide.BUY,
-        "type": OrderType.LIMIT,
+        "order_type": OrderType.LIMIT,
         "created_at": datetime.now(timezone.utc),
     }
 

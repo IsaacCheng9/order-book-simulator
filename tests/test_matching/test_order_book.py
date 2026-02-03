@@ -20,7 +20,7 @@ def create_order(
         "price": price,
         "quantity": quantity,
         "side": side,
-        "type": order_type,
+        "order_type": order_type,
         "created_at": datetime.now(timezone.utc),
     }
 
