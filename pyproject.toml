@@ -1,7 +1,7 @@
 [project]
 description = "An order matching engine and market data system built in Python, designed to simulate real-world exchange trading mechanics. Processes limit orders with price-time priority, executes trades, and provides market data updates in real-time."
 name = "order-book-simulator"
-version = "0.23.6"
+version = "0.23.7"
 readme = "README.md"
 authors = [
     { name = "Isaac Cheng", email = "47993930+IsaacCheng9@users.noreply.github.com" },
@@ -51,7 +51,7 @@ source = ["src/order_book_simulator"]
 omit = ["tests/*", "**/conftest.py"]
 
 [tool.commitizen]
-version = "0.23.6"
+version = "0.23.7"
 version_files = [
     "pyproject.toml:version",
     "pyproject.toml:tool.commitizen.version",
