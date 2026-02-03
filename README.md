@@ -146,13 +146,13 @@ The project includes two categories of benchmarks:
 
 ```bash
 # Benchmark the core order book data structure (pure Python, synchronous).
-python benchmarks/unit/order_book_benchmark.py
+uv run python benchmarks/unit/order_book_benchmark.py
 
 # Benchmark the full matching engine with mocked I/O.
-python benchmarks/unit/matching_engine_benchmark.py
+uv run python benchmarks/unit/matching_engine_benchmark.py
 
 # Run all unit benchmarks together.
-python benchmarks/unit/run_all.py
+uv run python benchmarks/unit/run_all.py
 ```
 
 The order book benchmark measures the raw performance of the matching logic and
