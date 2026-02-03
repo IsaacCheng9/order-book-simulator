@@ -128,10 +128,10 @@ class OrderBook:
         if isinstance(side, str):
             side = OrderSide(side)
             order["side"] = side
-        order_type = order["type"]
+        order_type = order["order_type"]
         if isinstance(order_type, str):
             order_type = OrderType(order_type)
-            order["type"] = order_type
+            order["order_type"] = order_type
         is_buy = side == OrderSide.BUY
         price = Decimal(order["price"]) if order.get("price") is not None else None
 

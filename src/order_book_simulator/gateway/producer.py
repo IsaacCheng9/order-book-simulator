@@ -144,9 +144,11 @@ class OrderProducer:
 
         # Convert types before serialising.
         kafka_record = {
+            "type": "order",
             "id": str(order_record["id"]),
             "stock_id": str(order_record["stock_id"]),
-            "type": order_record["type"].value,
+            "ticker": order_record["ticker"],
+            "order_type": order_record["type"].value,
             "side": order_record["side"].value,
             "price": str(order_record["price"]) if order_record["price"] else None,
             "quantity": str(order_record["quantity"]),
@@ -155,7 +157,7 @@ class OrderProducer:
 
         logger.info(
             f"Publishing order: id={kafka_record['id']}, "
-            f"type={kafka_record['type']}, side={kafka_record['side']}, "
+            f"order_type={kafka_record['order_type']}, side={kafka_record['side']}, "
             f"price={kafka_record['price']}, quantity={kafka_record['quantity']}"
         )
 

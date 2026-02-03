@@ -7,9 +7,15 @@ COPY pyproject.toml ./
 COPY uv.lock ./
 COPY README.md ./
 
-# Install uv and dependencies
-RUN pip install uv
-RUN uv sync --frozen
+# Install uv and dependencies (gcc/libc-dev/zlib1g-dev needed for aiokafka C extensions)
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    gcc \
+    libc-dev \
+    zlib1g-dev \
+    && pip install uv && uv sync --frozen \
+    && apt-get purge -y gcc libc-dev zlib1g-dev \
+    && apt-get autoremove -y \
+    && rm -rf /var/lib/apt/lists/*
 
 # Copy source code
 COPY src/ ./src/

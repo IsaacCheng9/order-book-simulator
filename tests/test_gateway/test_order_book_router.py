@@ -17,7 +17,7 @@ def test_get_all_order_books_with_orders(test_client, matching_engine):
             "price": "100.00",
             "quantity": "10.00",
             "side": OrderSide.BUY.value,
-            "type": OrderType.LIMIT.value,
+            "order_type": OrderType.LIMIT.value,
             "created_at": datetime.now(timezone.utc),
         }
         asyncio.run(matching_engine.process_order(order))
