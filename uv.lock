@@ -602,7 +602,7 @@ wheels = [
 
 [[package]]
 name = "order-book-simulator"
-version = "0.23.7"
+version = "0.23.8"
 source = { editable = "." }
 dependencies = [
     { name = "aiohttp" },
