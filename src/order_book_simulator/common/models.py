@@ -7,6 +7,8 @@ from uuid import UUID
 
 from pydantic import BaseModel
 
+MAX_DELTA_HISTORY = 2000
+
 
 class OrderType(str, Enum):
     MARKET = "MARKET"

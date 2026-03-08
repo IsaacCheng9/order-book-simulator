@@ -2,7 +2,12 @@ import time
 from uuid import UUID
 from decimal import Decimal
 from collections import deque
-from order_book_simulator.common.models import DeltaType, OrderSide, Delta
+from order_book_simulator.common.models import (
+    MAX_DELTA_HISTORY,
+    Delta,
+    DeltaType,
+    OrderSide,
+)
 
 
 class DeltaBuffer:
@@ -15,7 +20,7 @@ class DeltaBuffer:
     is needed.
     """
 
-    def __init__(self, max_size: int = 2000):
+    def __init__(self, max_size: int = MAX_DELTA_HISTORY):
         self._sequence_number: int = 0
         self._buffer: deque[Delta] = deque(maxlen=max_size)
 
