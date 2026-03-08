@@ -98,10 +98,11 @@ class MatchingEngine:
         """
         order_id = cancel_message["order_id"]
         stock_id = UUID(cancel_message["stock_id"])
-
         order_book = self.order_books.get(stock_id)
         if not order_book:
             return {"success": False, "reason": "Order book not found"}
+
+        sequence_before = order_book.delta_buffer.current_sequence
 
         is_success = order_book.cancel_order(order_id)
         if not is_success:
@@ -109,6 +110,10 @@ class MatchingEngine:
 
         # Update the order book cache.
         await order_book_cache.set_order_book(stock_id, order_book.get_full_snapshot())
+        deltas = order_book.delta_buffer.get_delta_since(sequence_before)
+        if deltas:
+            await order_book_cache.store_deltas(stock_id, deltas)
+
         # Publish market data update.
         await self._publish_market_data(
             stock_id,
