@@ -197,9 +197,17 @@ class OrderBook:
                 price_levels[price] = PriceLevel(price)
             price_level = price_levels[price]
 
-            # Add the order to the price level and update the index.
+            # Add the order to the price level and update the index and buffer.
             price_level.orders[incoming_order.id] = incoming_order
             self.order_id_to_order[incoming_order.id] = incoming_order
+            self.delta_buffer.add(
+                DeltaType.LEVEL_UPDATE,
+                self.ticker,
+                incoming_order.side,
+                price,
+                price_level.quantity,
+                price_level.order_count,
+            )
 
         return [
             {
