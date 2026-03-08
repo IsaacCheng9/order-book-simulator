@@ -15,6 +15,8 @@ import orjson
 from order_book_simulator.common.models import OrderSide, OrderType
 from order_book_simulator.matching.order_book import OrderBook
 
+from datetime import datetime, timezone
+
 
 def create_order(
     price: Decimal,
@@ -22,8 +24,6 @@ def create_order(
     side: OrderSide = OrderSide.BUY,
 ) -> dict:
     """Create a test limit order."""
-    from datetime import datetime, timezone
-
     return {
         "id": uuid4(),
         "price": price,
