@@ -151,6 +151,6 @@ class Delta:
     side: OrderSide | None
     price: Decimal
     quantity: Decimal
-    order_count: int
+    order_count: int | None = None
     # Only present for TRADE deltas.
     trade_id: UUID | None = None

@@ -26,7 +26,7 @@ class DeltaBuffer:
         side: OrderSide | None,
         price: Decimal,
         quantity: Decimal,
-        order_count: int,
+        order_count: int | None = None,
         trade_id: UUID | None = None,
     ) -> Delta:
         """
