@@ -1,8 +1,11 @@
+from dataclasses import asdict
 import orjson
 from typing import Any
 from uuid import UUID
 
 from redis.asyncio import Redis
+
+from order_book_simulator.common.models import MAX_DELTA_HISTORY, Delta
 
 
 class OrderBookCache:
@@ -36,6 +39,14 @@ class OrderBookCache:
     def redis(self, value: Redis) -> None:
         """Allows setting a mock Redis client for testing."""
         self._redis = value
+
+    def _get_deltas_key(self, stock_id: UUID) -> str:
+        """Gets the Redis key for delta history."""
+        return f"deltas:{stock_id}"
+
+    def _get_delta_seq_key(self, stock_id: UUID) -> str:
+        """Gets the Redis key for the current delta sequence number."""
+        return f"delta_seq:{stock_id}"
 
     def _get_order_book_key(self, stock_id: UUID) -> str:
         """
@@ -144,6 +155,21 @@ class OrderBookCache:
         await self.redis.rpush(key, *serialised_trades)  # type: ignore[arg-type]
         # Enforce the maximum trade history.
         await self.redis.ltrim(key, -self.max_trade_history, -1)  # type: ignore[arg-type]
+
+    async def store_deltas(self, stock_id: UUID, deltas: list[Delta]) -> None:
+        if not deltas:
+            return
+
+        # Convert each Delta to a dict.
+        serialised_deltas: list[bytes] = [
+            orjson.dumps(asdict(delta), default=str) for delta in deltas
+        ]
+        # Store the deltas in Redis.
+        deltas_key = self._get_deltas_key(stock_id)
+        await self.redis.rpush(deltas_key, *serialised_deltas)  # type: ignore[arg-type]
+        await self.redis.ltrim(deltas_key, -MAX_DELTA_HISTORY, -1)  # type: ignore[arg-type]
+        last_delta_seq_number = self._get_delta_seq_key(stock_id)
+        await self.redis.set(last_delta_seq_number, deltas[-1].sequence_number)
 
 
 # Global cache instance
