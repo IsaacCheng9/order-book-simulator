@@ -179,7 +179,7 @@ class OrderBookCache:
         last_delta_seq_number = self._get_delta_seq_key(stock_id)
         await self.redis.set(last_delta_seq_number, deltas[-1].sequence_number)
 
-    async def get_delta_since(
+    async def get_deltas_since(
         self, stock_id: UUID, sequence_number: int
     ) -> list[dict[str, Any]] | None:
         """

@@ -37,7 +37,7 @@ def test_add_order_emits_level_update() -> None:
         create_order(price=Decimal("100"), quantity=Decimal("10")),
     )
 
-    deltas = book.delta_buffer.get_delta_since(0)
+    deltas = book.delta_buffer.get_deltas_since(0)
     assert deltas is not None
     assert len(deltas) == 1
 
@@ -61,7 +61,7 @@ def test_add_two_orders_same_level_emits_correct_quantity() -> None:
         create_order(price=Decimal("100"), quantity=Decimal("5")),
     )
 
-    deltas = book.delta_buffer.get_delta_since(1)
+    deltas = book.delta_buffer.get_deltas_since(1)
     assert deltas is not None
     assert len(deltas) == 1
 
@@ -90,7 +90,7 @@ def test_full_match_emits_trade_and_level_remove() -> None:
         create_order(price=Decimal("100"), quantity=Decimal("10")),
     )
 
-    deltas = book.delta_buffer.get_delta_since(seq_before)
+    deltas = book.delta_buffer.get_deltas_since(seq_before)
     assert deltas is not None
 
     trade_deltas = [d for d in deltas if d.delta_type == DeltaType.TRADE]
@@ -127,7 +127,7 @@ def test_partial_match_emits_trade_and_level_update() -> None:
         create_order(price=Decimal("100"), quantity=Decimal("3")),
     )
 
-    deltas = book.delta_buffer.get_delta_since(seq_before)
+    deltas = book.delta_buffer.get_deltas_since(seq_before)
     assert deltas is not None
 
     trade_deltas = [d for d in deltas if d.delta_type == DeltaType.TRADE]
@@ -153,7 +153,7 @@ def test_cancel_last_order_emits_level_remove() -> None:
 
     book.cancel_order(order["id"])
 
-    deltas = book.delta_buffer.get_delta_since(seq_before)
+    deltas = book.delta_buffer.get_deltas_since(seq_before)
     assert deltas is not None
     assert len(deltas) == 1
 
@@ -178,7 +178,7 @@ def test_cancel_one_of_two_orders_emits_level_update() -> None:
 
     book.cancel_order(order1["id"])
 
-    deltas = book.delta_buffer.get_delta_since(seq_before)
+    deltas = book.delta_buffer.get_deltas_since(seq_before)
     assert deltas is not None
     assert len(deltas) == 1
 
@@ -195,7 +195,7 @@ def test_cancel_nonexistent_order_emits_no_delta() -> None:
 
     book.cancel_order(uuid4())
 
-    deltas = book.delta_buffer.get_delta_since(seq_before)
+    deltas = book.delta_buffer.get_deltas_since(seq_before)
     assert deltas == []
 
 
@@ -224,7 +224,7 @@ def test_match_across_multiple_levels_emits_correct_deltas() -> None:
         create_order(price=Decimal("101"), quantity=Decimal("10")),
     )
 
-    deltas = book.delta_buffer.get_delta_since(seq_before)
+    deltas = book.delta_buffer.get_deltas_since(seq_before)
     assert deltas is not None
 
     trade_deltas = [d for d in deltas if d.delta_type == DeltaType.TRADE]
@@ -254,7 +254,7 @@ def test_sequence_numbers_are_monotonic_across_operations() -> None:
     order = create_order(price=Decimal("100"), quantity=Decimal("5"))
     book.add_order(order)
 
-    deltas = book.delta_buffer.get_delta_since(0)
+    deltas = book.delta_buffer.get_deltas_since(0)
     assert deltas is not None
 
     sequences = [d.sequence_number for d in deltas]

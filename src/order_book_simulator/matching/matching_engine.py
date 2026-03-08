@@ -110,7 +110,7 @@ class MatchingEngine:
 
         # Update the order book cache.
         await order_book_cache.set_order_book(stock_id, order_book.get_full_snapshot())
-        deltas = order_book.delta_buffer.get_delta_since(sequence_before)
+        deltas = order_book.delta_buffer.get_deltas_since(sequence_before)
         if deltas:
             await order_book_cache.store_deltas(stock_id, deltas)
 
@@ -145,7 +145,7 @@ class MatchingEngine:
 
         # Cache the order book state
         await order_book_cache.set_order_book(stock_id, order_book.get_full_snapshot())
-        deltas = order_book.delta_buffer.get_delta_since(sequence_before)
+        deltas = order_book.delta_buffer.get_deltas_since(sequence_before)
         if deltas:
             await order_book_cache.store_deltas(stock_id, deltas)
 

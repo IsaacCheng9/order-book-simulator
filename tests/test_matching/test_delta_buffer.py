@@ -44,8 +44,8 @@ def test_add_increments_sequence_monotonically(buffer: DeltaBuffer) -> None:
     assert buffer.current_sequence == 3
 
 
-def test_get_delta_since_returns_newer_deltas(buffer: DeltaBuffer) -> None:
-    """Tests that get_delta_since returns only deltas after the given sequence."""
+def test_get_deltas_since_returns_newer_deltas(buffer: DeltaBuffer) -> None:
+    """Tests that get_deltas_since returns only deltas after the given sequence."""
     buffer.add(
         DeltaType.LEVEL_UPDATE,
         "AAPL",
@@ -70,7 +70,7 @@ def test_get_delta_since_returns_newer_deltas(buffer: DeltaBuffer) -> None:
         Decimal("50"),
     )
 
-    deltas = buffer.get_delta_since(1)
+    deltas = buffer.get_deltas_since(1)
 
     assert deltas is not None
     assert len(deltas) == 2
@@ -80,7 +80,7 @@ def test_get_delta_since_returns_newer_deltas(buffer: DeltaBuffer) -> None:
     assert deltas[1].delta_type == DeltaType.TRADE
 
 
-def test_get_delta_since_returns_empty_when_up_to_date(
+def test_get_deltas_since_returns_empty_when_up_to_date(
     buffer: DeltaBuffer,
 ) -> None:
     """Tests that an up-to-date client receives an empty list."""
@@ -93,11 +93,11 @@ def test_get_delta_since_returns_empty_when_up_to_date(
         3,
     )
 
-    assert buffer.get_delta_since(1) == []
-    assert buffer.get_delta_since(2) == []
+    assert buffer.get_deltas_since(1) == []
+    assert buffer.get_deltas_since(2) == []
 
 
-def test_get_delta_since_returns_none_when_evicted(
+def test_get_deltas_since_returns_none_when_evicted(
     buffer: DeltaBuffer,
 ) -> None:
     """Tests that None is returned when the requested sequence has been
@@ -115,23 +115,23 @@ def test_get_delta_since_returns_none_when_evicted(
         )
 
     # Sequence 1 has been evicted - the buffer can't prove continuity.
-    assert buffer.get_delta_since(1) is None
+    assert buffer.get_deltas_since(1) is None
     # Sequence 2 is recoverable - the oldest delta is 3, so 2+1 == 3.
-    deltas = buffer.get_delta_since(2)
+    deltas = buffer.get_deltas_since(2)
     assert deltas is not None
     assert len(deltas) == 5
     assert deltas[0].sequence_number == 3
 
 
-def test_get_delta_since_returns_none_when_buffer_empty() -> None:
+def test_get_deltas_since_returns_none_when_buffer_empty() -> None:
     """Tests that None is returned for a non-zero sequence when the buffer
     is empty.
     """
     buffer = DeltaBuffer(max_size=5)
-    assert buffer.get_delta_since(0) == []
+    assert buffer.get_deltas_since(0) == []
 
 
-def test_get_delta_since_zero_returns_all_deltas(
+def test_get_deltas_since_zero_returns_all_deltas(
     buffer: DeltaBuffer,
 ) -> None:
     """Tests that requesting from sequence 0 returns all buffered deltas."""
@@ -151,7 +151,7 @@ def test_get_delta_since_zero_returns_all_deltas(
         Decimal("50"),
     )
 
-    deltas = buffer.get_delta_since(0)
+    deltas = buffer.get_deltas_since(0)
 
     assert deltas is not None
     assert len(deltas) == 2

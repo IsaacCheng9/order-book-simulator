@@ -65,7 +65,7 @@ class DeltaBuffer:
         self._buffer.append(new_delta)
         return new_delta
 
-    def get_delta_since(self, sequence_number: int) -> list[Delta] | None:
+    def get_deltas_since(self, sequence_number: int) -> list[Delta] | None:
         """
         Return all deltas after the given sequence number.
 
