@@ -181,7 +181,7 @@ class OrderBookCache:
 
     async def get_delta_since(
         self, stock_id: UUID, sequence_number: int
-    ) -> list[dict] | None:
+    ) -> list[dict[str, Any]] | None:
         """
         Retrieves deltas newer than the given sequence number from Redis.
 
