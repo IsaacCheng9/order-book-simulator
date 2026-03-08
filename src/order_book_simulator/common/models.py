@@ -144,7 +144,7 @@ class DeltaType(str, Enum):
 
 @dataclass
 class Delta:
-    sequence: int
+    sequence_number: int
     timestamp: float
     delta_type: DeltaType
     ticker: str
