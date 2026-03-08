@@ -132,12 +132,17 @@ class MatchingEngine:
             order_book = OrderBook(stock_id, ticker)
             self.order_books[stock_id] = order_book
 
+        sequence_before = order_book.delta_buffer.current_sequence
+
         # Add timestamp of when the order was processed.
         order_message["created_at"] = datetime.now(timezone.utc)
         trades = order_book.add_order(order_message)
 
         # Cache the order book state
         await order_book_cache.set_order_book(stock_id, order_book.get_full_snapshot())
+        deltas = order_book.delta_buffer.get_delta_since(sequence_before)
+        if deltas:
+            await order_book_cache.store_deltas(stock_id, deltas)
 
         # Always publish market data updates, even if no trades occurred.
         await self._publish_market_data(stock_id, ticker, order_book, trades or [])
