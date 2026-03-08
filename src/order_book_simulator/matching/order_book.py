@@ -18,8 +18,9 @@ class OrderBook:
     Manages the limit order book for a single stock.
     """
 
-    def __init__(self, stock_id: UUID):
-        self.stock_id = stock_id
+    def __init__(self, stock_id: UUID, ticker: str):
+        self.stock_id: UUID = stock_id
+        self.ticker: str = ticker
         self.bid_levels: SortedDict[Decimal, PriceLevel] = SortedDict(lambda x: -x)
         self.ask_levels: SortedDict[Decimal, PriceLevel] = SortedDict()
         # Map the order ID to the order object for O(1) look-ups, which enables

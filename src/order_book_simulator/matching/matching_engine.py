@@ -129,7 +129,7 @@ class MatchingEngine:
         ticker = order_message["ticker"]
         order_book = self.order_books.get(stock_id)
         if not order_book:
-            order_book = OrderBook(stock_id)
+            order_book = OrderBook(stock_id, ticker)
             self.order_books[stock_id] = order_book
 
         # Add timestamp of when the order was processed.

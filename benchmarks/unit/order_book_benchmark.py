@@ -49,7 +49,7 @@ def benchmark_insertion(num_orders: int = 10_000) -> float:
     Returns:
         The number of orders processed per second.
     """
-    book = OrderBook(uuid4())
+    book = OrderBook(uuid4(), "BENCH")
     orders = [
         create_test_order(
             Decimal(100 + index % 100),
@@ -83,7 +83,7 @@ def benchmark_matching(num_orders: int = 10_000) -> float:
     Returns:
         The number of orders processed per second.
     """
-    book = OrderBook(uuid4())
+    book = OrderBook(uuid4(), "BENCH")
     price = Decimal(100)
     # Create alternating buy and sell orders so they match against each other.
     orders = [
@@ -120,7 +120,7 @@ def benchmark_deep_book(num_levels: int = 1000, orders_per_level: int = 100) -> 
     Returns:
         The number of orders processed per second.
     """
-    book = OrderBook(uuid4())
+    book = OrderBook(uuid4(), "BENCH")
     total_orders = num_levels * orders_per_level
     orders = [
         create_test_order(
