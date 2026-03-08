@@ -134,3 +134,23 @@ class OrderBookState:
     last_trade_price: Decimal | None
     last_trade_quantity: Decimal | None
     last_update_time: datetime
+
+
+class DeltaType(str, Enum):
+    LEVEL_UPDATE = "LEVEL_UPDATE"
+    LEVEL_REMOVE = "LEVEL_REMOVE"
+    TRADE = "TRADE"
+
+
+@dataclass
+class Delta:
+    sequence: int
+    timestamp: float
+    delta_type: DeltaType
+    ticker: str
+    side: OrderSide | None
+    price: Decimal
+    quantity: Decimal
+    order_count: int
+    # Only present for TRADE deltas.
+    trade_id: UUID | None = None
