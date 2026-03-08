@@ -171,6 +171,27 @@ class OrderBookCache:
         last_delta_seq_number = self._get_delta_seq_key(stock_id)
         await self.redis.set(last_delta_seq_number, deltas[-1].sequence_number)
 
+    async def get_delta_since(
+        self, stock_id: UUID, sequence_number: int
+    ) -> list[dict] | None:
+        deltas_key = self._get_deltas_key(stock_id)
+        all_deltas: list[bytes] = await self.redis.lrange(deltas_key, 0, -1)  # type: ignore[arg-type]
+        if not all_deltas:
+            return []
+
+        deserialised_deltas: list[dict[str, Any]] = [
+            orjson.loads(delta) for delta in all_deltas
+        ]
+        if sequence_number >= deserialised_deltas[-1]["sequence_number"]:
+            return []
+        elif sequence_number < deserialised_deltas[0]["sequence_number"] - 1:
+            return None
+        return [
+            delta
+            for delta in deserialised_deltas
+            if delta["sequence_number"] > sequence_number
+        ]
+
 
 # Global cache instance
 order_book_cache = OrderBookCache()
