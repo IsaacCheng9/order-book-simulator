@@ -5,12 +5,14 @@ from uuid import UUID, uuid4
 from sortedcontainers import SortedDict
 
 from order_book_simulator.common.models import (
+    DeltaType,
     FilledOrder,
     OrderBookEntry,
     OrderSide,
     OrderType,
     PriceLevel,
 )
+from order_book_simulator.matching.delta_buffer import DeltaBuffer
 
 
 class OrderBook:
@@ -26,6 +28,7 @@ class OrderBook:
         # Map the order ID to the order object for O(1) look-ups, which enables
         # us to fetch order details and cancel / modify orders efficiently.
         self.order_id_to_order: dict[UUID, OrderBookEntry] = {}
+        self.delta_buffer: DeltaBuffer = DeltaBuffer()
 
     def _match_orders(
         self,
@@ -190,18 +193,37 @@ class OrderBook:
         Returns:
             True if the order was cancelled, False otherwise.
         """
-        order = self.order_id_to_order.get(order_id)
+        order: OrderBookEntry | None = self.order_id_to_order.get(order_id)
         if not order:
             return False
 
         # Remove from the price level if it's a limit order.
-        levels = self.bid_levels if order.side == OrderSide.BUY else self.ask_levels
+        levels: SortedDict[Decimal, PriceLevel] = (
+            self.bid_levels if order.side == OrderSide.BUY else self.ask_levels
+        )
         if order.price and order.price in levels:
-            price_level = levels[order.price]
+            price_level: PriceLevel = levels[order.price]
             if order_id in price_level.orders:
                 del price_level.orders[order_id]
                 if not price_level.orders:
                     del levels[order.price]
+                    self.delta_buffer.add(
+                        DeltaType.LEVEL_REMOVE,
+                        self.ticker,
+                        order.side,
+                        order.price,
+                        Decimal(0),
+                        0,
+                    )
+                else:
+                    self.delta_buffer.add(
+                        DeltaType.LEVEL_UPDATE,
+                        self.ticker,
+                        order.side,
+                        order.price,
+                        price_level.quantity,
+                        price_level.order_count,
+                    )
 
         # Remove from the order tracking.
         del self.order_id_to_order[order_id]
