@@ -192,6 +192,10 @@ class OrderBookCache:
             if delta["sequence_number"] > sequence_number
         ]
 
+    async def get_current_delta_sequence_number(self, stock_id: UUID) -> int:
+        raw_data = await self.redis.get(self._get_delta_seq_key(stock_id))
+        return int(raw_data) if raw_data else 0
+
 
 # Global cache instance
 order_book_cache = OrderBookCache()
