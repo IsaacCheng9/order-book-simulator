@@ -76,7 +76,7 @@ class DeltaBuffer:
             return []
         # Client is too far behind - requested sequence number is older than
         # the oldest delta in the buffer.
-        elif not self._buffer or sequence_number < self._buffer[0].sequence_number:
+        elif not self._buffer or sequence_number < self._buffer[0].sequence_number - 1:
             return None
         return [
             delta for delta in self._buffer if delta.sequence_number > sequence_number
