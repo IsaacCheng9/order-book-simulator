@@ -157,6 +157,14 @@ class OrderBookCache:
         await self.redis.ltrim(key, -self.max_trade_history, -1)  # type: ignore[arg-type]
 
     async def store_deltas(self, stock_id: UUID, deltas: list[Delta]) -> None:
+        """
+        Appends deltas to the Redis delta list and update the current sequence
+        number. Trims to MAX_DELTA_HISTORY to bound memory usage.
+
+        Args:
+            stock_id: The stock ID.
+            deltas: The list of deltas to store.
+        """
         if not deltas:
             return
 
@@ -174,6 +182,18 @@ class OrderBookCache:
     async def get_delta_since(
         self, stock_id: UUID, sequence_number: int
     ) -> list[dict] | None:
+        """
+        Retrieves deltas newer than the given sequence number from Redis.
+
+        Args:
+            stock_id: The stock ID.
+            sequence_number: The last sequence number the client has seen.
+
+        Returns:
+            A list of delta dicts if recoverable, an empty list if up to date,
+            or None if the requested sequence has been evicted and the client
+            needs a full snapshot.
+        """
         deltas_key = self._get_deltas_key(stock_id)
         all_deltas: list[bytes] = await self.redis.lrange(deltas_key, 0, -1)  # type: ignore[arg-type]
         if not all_deltas:
@@ -193,6 +213,15 @@ class OrderBookCache:
         ]
 
     async def get_current_delta_sequence_number(self, stock_id: UUID) -> int:
+        """
+        Get the latest delta sequence number for a stock.
+
+        Args:
+            stock_id: The stock ID.
+
+        Returns:
+            The current sequence number, or 0 if no deltas exist.
+        """
         raw_data = await self.redis.get(self._get_delta_seq_key(stock_id))
         return int(raw_data) if raw_data else 0
 
