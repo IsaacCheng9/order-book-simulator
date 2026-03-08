@@ -271,7 +271,7 @@ def test_client(db_session):
 @pytest.fixture
 def order_book() -> OrderBook:
     """Creates a fresh order book for testing."""
-    return OrderBook(stock_id=uuid4())
+    return OrderBook(stock_id=uuid4(), ticker="TEST")
 
 
 @pytest.fixture(autouse=True)

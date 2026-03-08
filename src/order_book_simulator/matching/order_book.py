@@ -5,12 +5,14 @@ from uuid import UUID, uuid4
 from sortedcontainers import SortedDict
 
 from order_book_simulator.common.models import (
+    DeltaType,
     FilledOrder,
     OrderBookEntry,
     OrderSide,
     OrderType,
     PriceLevel,
 )
+from order_book_simulator.matching.delta_buffer import DeltaBuffer
 
 
 class OrderBook:
@@ -18,13 +20,15 @@ class OrderBook:
     Manages the limit order book for a single stock.
     """
 
-    def __init__(self, stock_id: UUID):
-        self.stock_id = stock_id
+    def __init__(self, stock_id: UUID, ticker: str):
+        self.stock_id: UUID = stock_id
+        self.ticker: str = ticker
         self.bid_levels: SortedDict[Decimal, PriceLevel] = SortedDict(lambda x: -x)
         self.ask_levels: SortedDict[Decimal, PriceLevel] = SortedDict()
         # Map the order ID to the order object for O(1) look-ups, which enables
         # us to fetch order details and cancel / modify orders efficiently.
         self.order_id_to_order: dict[UUID, OrderBookEntry] = {}
+        self.delta_buffer: DeltaBuffer = DeltaBuffer()
 
     def _match_orders(
         self,
@@ -77,6 +81,7 @@ class OrderBook:
 
             # Match against orders at this price level (FIFO via dict order).
             orders_to_remove: list[UUID] = []
+            matched_at_level = False
             for order_id, resting_order in level.orders.items():
                 if incoming_order.quantity <= Decimal(0):
                     break
@@ -94,6 +99,16 @@ class OrderBook:
                     seller_order_id=order_id if is_buy else incoming_order.id,
                 )
                 trades.append(fill)
+                matched_at_level = True
+                self.delta_buffer.add(
+                    DeltaType.TRADE,
+                    self.ticker,
+                    None,
+                    price,
+                    match_quantity,
+                    trade_id=fill.id,
+                )
+
                 # If the resting order has been filled, remove it later.
                 if resting_order.quantity == Decimal(0):
                     orders_to_remove.append(order_id)
@@ -102,9 +117,39 @@ class OrderBook:
             for order_id in orders_to_remove:
                 del level.orders[order_id]
                 del self.order_id_to_order[order_id]
-            # Mark empty price levels for removal.
-            if not level.orders:
-                levels_to_remove.append(price)
+
+            # Emit a level delta if this level was affected by matching.
+            resting_side = OrderSide.SELL if is_buy else OrderSide.BUY
+            if orders_to_remove:
+                if not level.orders:
+                    levels_to_remove.append(price)
+                    self.delta_buffer.add(
+                        DeltaType.LEVEL_REMOVE,
+                        self.ticker,
+                        resting_side,
+                        price,
+                        Decimal(0),
+                        0,
+                    )
+                else:
+                    self.delta_buffer.add(
+                        DeltaType.LEVEL_UPDATE,
+                        self.ticker,
+                        resting_side,
+                        price,
+                        level.quantity,
+                        level.order_count,
+                    )
+            elif matched_at_level:
+                # Partial fill - no orders removed but quantity changed.
+                self.delta_buffer.add(
+                    DeltaType.LEVEL_UPDATE,
+                    self.ticker,
+                    resting_side,
+                    price,
+                    level.quantity,
+                    level.order_count,
+                )
 
         # Remove empty price levels.
         for price_level in levels_to_remove:
@@ -164,9 +209,17 @@ class OrderBook:
                 price_levels[price] = PriceLevel(price)
             price_level = price_levels[price]
 
-            # Add the order to the price level and update the index.
+            # Add the order to the price level and update the index and buffer.
             price_level.orders[incoming_order.id] = incoming_order
             self.order_id_to_order[incoming_order.id] = incoming_order
+            self.delta_buffer.add(
+                DeltaType.LEVEL_UPDATE,
+                self.ticker,
+                incoming_order.side,
+                price,
+                price_level.quantity,
+                price_level.order_count,
+            )
 
         return [
             {
@@ -189,18 +242,37 @@ class OrderBook:
         Returns:
             True if the order was cancelled, False otherwise.
         """
-        order = self.order_id_to_order.get(order_id)
+        order: OrderBookEntry | None = self.order_id_to_order.get(order_id)
         if not order:
             return False
 
         # Remove from the price level if it's a limit order.
-        levels = self.bid_levels if order.side == OrderSide.BUY else self.ask_levels
+        levels: SortedDict[Decimal, PriceLevel] = (
+            self.bid_levels if order.side == OrderSide.BUY else self.ask_levels
+        )
         if order.price and order.price in levels:
-            price_level = levels[order.price]
+            price_level: PriceLevel = levels[order.price]
             if order_id in price_level.orders:
                 del price_level.orders[order_id]
                 if not price_level.orders:
                     del levels[order.price]
+                    self.delta_buffer.add(
+                        DeltaType.LEVEL_REMOVE,
+                        self.ticker,
+                        order.side,
+                        order.price,
+                        Decimal(0),
+                        0,
+                    )
+                else:
+                    self.delta_buffer.add(
+                        DeltaType.LEVEL_UPDATE,
+                        self.ticker,
+                        order.side,
+                        order.price,
+                        price_level.quantity,
+                        price_level.order_count,
+                    )
 
         # Remove from the order tracking.
         del self.order_id_to_order[order_id]

@@ -7,6 +7,8 @@ from uuid import UUID
 
 from pydantic import BaseModel
 
+MAX_DELTA_HISTORY = 2000
+
 
 class OrderType(str, Enum):
     MARKET = "MARKET"
@@ -134,3 +136,23 @@ class OrderBookState:
     last_trade_price: Decimal | None
     last_trade_quantity: Decimal | None
     last_update_time: datetime
+
+
+class DeltaType(str, Enum):
+    LEVEL_UPDATE = "LEVEL_UPDATE"
+    LEVEL_REMOVE = "LEVEL_REMOVE"
+    TRADE = "TRADE"
+
+
+@dataclass
+class Delta:
+    sequence_number: int
+    timestamp: float
+    delta_type: DeltaType
+    ticker: str
+    side: OrderSide | None
+    price: Decimal
+    quantity: Decimal
+    order_count: int | None = None
+    # Only present for TRADE deltas.
+    trade_id: UUID | None = None
