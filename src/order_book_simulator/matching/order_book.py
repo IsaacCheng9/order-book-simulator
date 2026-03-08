@@ -98,6 +98,15 @@ class OrderBook:
                     seller_order_id=order_id if is_buy else incoming_order.id,
                 )
                 trades.append(fill)
+                self.delta_buffer.add(
+                    DeltaType.TRADE,
+                    self.ticker,
+                    None,
+                    price,
+                    match_quantity,
+                    trade_id=fill.id,
+                )
+
                 # If the resting order has been filled, remove it later.
                 if resting_order.quantity == Decimal(0):
                     orders_to_remove.append(order_id)
@@ -106,9 +115,29 @@ class OrderBook:
             for order_id in orders_to_remove:
                 del level.orders[order_id]
                 del self.order_id_to_order[order_id]
-            # Mark empty price levels for removal.
-            if not level.orders:
-                levels_to_remove.append(price)
+
+            # Emit a level delta if any orders were removed.
+            resting_side = OrderSide.SELL if is_buy else OrderSide.BUY
+            if orders_to_remove:
+                if not level.orders:
+                    levels_to_remove.append(price)
+                    self.delta_buffer.add(
+                        DeltaType.LEVEL_REMOVE,
+                        self.ticker,
+                        resting_side,
+                        price,
+                        Decimal(0),
+                        0,
+                    )
+                else:
+                    self.delta_buffer.add(
+                        DeltaType.LEVEL_UPDATE,
+                        self.ticker,
+                        resting_side,
+                        price,
+                        level.quantity,
+                        level.order_count,
+                    )
 
         # Remove empty price levels.
         for price_level in levels_to_remove:
