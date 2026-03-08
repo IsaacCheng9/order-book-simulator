@@ -35,8 +35,16 @@ class DeltaBuffer:
         self._buffer.append(new_delta)
         return new_delta
 
-    def get_delta_since(self, sequence: int) -> list[Delta] | None:
-        raise NotImplementedError
+    def get_delta_since(self, sequence_number: int) -> list[Delta] | None:
+        if sequence_number >= self._sequence_number:
+            return []
+        # Client is too far behind - requested sequence number is older than
+        # the oldest delta in the buffer.
+        elif not self._buffer or sequence_number < self._buffer[0].sequence_number:
+            return None
+        return [
+            delta for delta in self._buffer if delta.sequence_number > sequence_number
+        ]
 
     @property
     def current_sequence(self) -> int:
