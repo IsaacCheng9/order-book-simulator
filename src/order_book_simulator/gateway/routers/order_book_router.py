@@ -129,6 +129,39 @@ async def get_order_books() -> dict[str, Any]:
     }
 
 
+@order_book_router.get("/{ticker}/deltas")
+async def get_deltas(
+    ticker: str, sequence_number: int, db: AsyncSession = Depends(get_db)
+) -> dict[str, Any]:
+    """
+    Returns the deltas for the specified stock.
+    """
+    stock = await get_stock_by_ticker(ticker, db)
+    if not stock:
+        raise HTTPException(
+            status_code=404,
+            detail=f"No stock found with ticker {ticker}",
+        )
+
+    deltas: list[dict[str, Any]] | None = await order_book_cache.get_delta_since(
+        stock.id, sequence_number
+    )
+    cur_delta_seq_number = await order_book_cache.get_current_delta_sequence_number(
+        stock.id
+    )
+    if deltas is not None:
+        return {
+            "deltas": deltas,
+            "current_delta_sequence_number": cur_delta_seq_number,
+        }
+    else:
+        snapshot = await order_book_cache.get_order_book(stock.id)
+        return {
+            "snapshot": snapshot,
+            "current_delta_sequence_number": cur_delta_seq_number,
+        }
+
+
 @order_book_router.get("/{ticker}")
 async def get_order_book(
     ticker: str, db: AsyncSession = Depends(get_db)
