@@ -81,6 +81,7 @@ class OrderBook:
 
             # Match against orders at this price level (FIFO via dict order).
             orders_to_remove: list[UUID] = []
+            matched_at_level = False
             for order_id, resting_order in level.orders.items():
                 if incoming_order.quantity <= Decimal(0):
                     break
@@ -98,6 +99,7 @@ class OrderBook:
                     seller_order_id=order_id if is_buy else incoming_order.id,
                 )
                 trades.append(fill)
+                matched_at_level = True
                 self.delta_buffer.add(
                     DeltaType.TRADE,
                     self.ticker,
@@ -116,7 +118,7 @@ class OrderBook:
                 del level.orders[order_id]
                 del self.order_id_to_order[order_id]
 
-            # Emit a level delta if any orders were removed.
+            # Emit a level delta if this level was affected by matching.
             resting_side = OrderSide.SELL if is_buy else OrderSide.BUY
             if orders_to_remove:
                 if not level.orders:
@@ -138,6 +140,16 @@ class OrderBook:
                         level.quantity,
                         level.order_count,
                     )
+            elif matched_at_level:
+                # Partial fill - no orders removed but quantity changed.
+                self.delta_buffer.add(
+                    DeltaType.LEVEL_UPDATE,
+                    self.ticker,
+                    resting_side,
+                    price,
+                    level.quantity,
+                    level.order_count,
+                )
 
         # Remove empty price levels.
         for price_level in levels_to_remove:
