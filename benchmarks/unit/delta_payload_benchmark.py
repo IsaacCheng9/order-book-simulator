@@ -7,6 +7,7 @@ bandwidth reduction from delta publishing.
 """
 
 from dataclasses import asdict
+from datetime import datetime, timezone
 from decimal import Decimal
 from uuid import uuid4
 
@@ -14,8 +15,6 @@ import orjson
 
 from order_book_simulator.common.models import OrderSide, OrderType
 from order_book_simulator.matching.order_book import OrderBook
-
-from datetime import datetime, timezone
 
 
 def create_order(
