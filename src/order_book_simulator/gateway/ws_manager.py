@@ -78,7 +78,14 @@ class WebSocketConnectionManager:
 ws_manager = WebSocketConnectionManager()
 
 
-async def redis_subscriber(redis_url: str) -> None:
+async def redis_pubsub_delta_subscriber(redis_url: str) -> None:
+    """
+    Background task that subscribes to Redis Pub/Sub for delta notifications
+    and broadcasts them to WebSocket clients.
+
+    Args:
+        redis_url: The Redis connection URL.
+    """
     redis = Redis.from_url(redis_url)
     pubsub = redis.pubsub()
 
