@@ -180,6 +180,13 @@ class OrderBookCache:
         await self.redis.set(last_delta_seq_number, deltas[-1].sequence_number)
 
     async def publish_deltas(self, ticker: str, deltas: list[Delta]) -> None:
+        """
+        Publishes deltas to the WebSocket channel for the given ticker.
+
+        Args:
+            ticker: The ticker to publish the deltas to.
+            deltas: The list of deltas to publish.
+        """
         channel = f"ws:deltas:{ticker}"
         payload = orjson.dumps([asdict(delta) for delta in deltas], default=str)
         await self.redis.publish(channel, payload)
