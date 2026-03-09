@@ -1,10 +1,42 @@
 import asyncio
-import orjson
-from redis.asyncio import Redis
 from collections import defaultdict
 from typing import Any
 
+import orjson
 from fastapi import WebSocket
+from redis.asyncio import Redis
+
+
+class ClientConnection:
+    def __init__(self, websocket: WebSocket, max_queue_size: int = 64):
+        self.websocket = websocket
+        self.queue: asyncio.Queue[dict[str, Any]] = asyncio.Queue(
+            maxsize=max_queue_size
+        )
+        self.sender_task: asyncio.Task = asyncio.create_task(self._send_loop())
+
+    async def _send_loop(self) -> None:
+        while True:
+            message: dict[str, Any] = await self.queue.get()
+            try:
+                await self.websocket.send_json(message)
+            except Exception:
+                break
+            self.queue.task_done()
+
+    def enqueue(self, message: dict[str, Any]) -> bool:
+        try:
+            self.queue.put_nowait(message)
+        except asyncio.QueueFull:
+            return False
+        return True
+
+    async def close(self) -> None:
+        self.sender_task.cancel()
+        try:
+            await self.sender_task
+        except asyncio.CancelledError:
+            pass
 
 
 class WebSocketConnectionManager:
@@ -109,26 +141,3 @@ async def redis_pubsub_delta_subscriber(redis_url: str) -> None:
     finally:
         await pubsub.punsubscribe("ws:deltas:*")
         await redis.aclose()
-
-
-class ClientConnection:
-    def __init__(self, websocket: WebSocket, max_queue_size: int = 64):
-        self.websocket = websocket
-        self.queue: asyncio.Queue[dict[str, Any]] = asyncio.Queue(
-            maxsize=max_queue_size
-        )
-        self.sender_task: asyncio.Task = asyncio.create_task(self._send_loop())
-
-    async def _send_loop(self) -> None:
-        pass
-
-    def enqueue(self, message: dict[str, Any]) -> bool:
-        pass
-
-    async def close(self) -> None:
-        self.sender_task.cancel()
-        try:
-            await self.sender_task
-        except asyncio.CancelledError:
-            pass
-        self.websocket.close()
