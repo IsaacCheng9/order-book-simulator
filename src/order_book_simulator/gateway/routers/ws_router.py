@@ -1,4 +1,5 @@
 from fastapi import APIRouter, WebSocket
+from starlette.websockets import WebSocketDisconnect
 
 from order_book_simulator.common.cache import order_book_cache
 from order_book_simulator.database.connection import AsyncSessionLocal
@@ -50,5 +51,7 @@ async def order_book_ws(websocket: WebSocket, ticker: str):
     try:
         while True:
             await websocket.receive_text()
+    except WebSocketDisconnect:
+        pass
     finally:
         ws_manager.unsubscribe(websocket, ticker)
