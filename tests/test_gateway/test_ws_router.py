@@ -45,10 +45,12 @@ def test_ws_receives_initial_snapshot(matching_engine, monkeypatch):
     )
     monkeypatch.setattr(
         "order_book_simulator.gateway.routers.ws_router.AsyncSessionLocal",
-        MagicMock(return_value=MagicMock(
-            __aenter__=AsyncMock(return_value=MagicMock()),
-            __aexit__=AsyncMock(return_value=False),
-        )),
+        MagicMock(
+            return_value=MagicMock(
+                __aenter__=AsyncMock(return_value=MagicMock()),
+                __aexit__=AsyncMock(return_value=False),
+            )
+        ),
     )
 
     client = TestClient(app)
@@ -60,9 +62,7 @@ def test_ws_receives_initial_snapshot(matching_engine, monkeypatch):
         assert data["data"]["bids"][0]["price"] == "100.00"
 
 
-def test_ws_snapshot_includes_sequence_number(
-    matching_engine, monkeypatch
-):
+def test_ws_snapshot_includes_sequence_number(matching_engine, monkeypatch):
     """Tests that the snapshot includes the current sequence number."""
     stock_id = uuid4()
     order = {
@@ -86,10 +86,12 @@ def test_ws_snapshot_includes_sequence_number(
     )
     monkeypatch.setattr(
         "order_book_simulator.gateway.routers.ws_router.AsyncSessionLocal",
-        MagicMock(return_value=MagicMock(
-            __aenter__=AsyncMock(return_value=MagicMock()),
-            __aexit__=AsyncMock(return_value=False),
-        )),
+        MagicMock(
+            return_value=MagicMock(
+                __aenter__=AsyncMock(return_value=MagicMock()),
+                __aexit__=AsyncMock(return_value=False),
+            )
+        ),
     )
 
     client = TestClient(app)
