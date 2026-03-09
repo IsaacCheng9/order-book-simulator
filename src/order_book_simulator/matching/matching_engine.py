@@ -113,6 +113,7 @@ class MatchingEngine:
         deltas = order_book.delta_buffer.get_deltas_since(sequence_before)
         if deltas:
             await order_book_cache.store_deltas(stock_id, deltas)
+            await order_book_cache.publish_deltas(cancel_message["ticker"], deltas)
 
         # Publish market data update.
         await self._publish_market_data(
@@ -148,6 +149,7 @@ class MatchingEngine:
         deltas = order_book.delta_buffer.get_deltas_since(sequence_before)
         if deltas:
             await order_book_cache.store_deltas(stock_id, deltas)
+            await order_book_cache.publish_deltas(ticker, deltas)
 
         # Always publish market data updates, even if no trades occurred.
         await self._publish_market_data(stock_id, ticker, order_book, trades or [])
