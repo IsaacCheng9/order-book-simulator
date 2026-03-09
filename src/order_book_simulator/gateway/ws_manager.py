@@ -12,9 +12,9 @@ class WebSocketConnectionManager:
     def __init__(self) -> None:
         self.connections_per_ticker: dict[str, set[WebSocket]] = defaultdict(set)
 
-    def connect(self, websocket: WebSocket, ticker: str) -> None:
+    def subscribe(self, websocket: WebSocket, ticker: str) -> None:
         """
-        Registers a WebSocket connection for a ticker.
+        Subscribes a WebSocket connection to a ticker.
 
         Args:
             websocket: The WebSocket connection to register.
@@ -22,9 +22,9 @@ class WebSocketConnectionManager:
         """
         self.connections_per_ticker[ticker].add(websocket)
 
-    def disconnect(self, websocket: WebSocket, ticker: str) -> None:
+    def unsubscribe(self, websocket: WebSocket, ticker: str) -> None:
         """
-        Removes a WebSocket connection for a ticker.
+        Unsubscribes a WebSocket connection from a ticker.
 
         Cleans up empty ticker entries to avoid unbounded dict growth.
 
@@ -58,7 +58,7 @@ class WebSocketConnectionManager:
                 dead_connections.append(connection)
 
         for connection in dead_connections:
-            self.disconnect(connection, ticker)
+            self.unsubscribe(connection, ticker)
 
     def get_connection_count(self, ticker: str) -> int:
         """
