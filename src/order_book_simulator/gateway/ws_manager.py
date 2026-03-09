@@ -115,6 +115,13 @@ class WebSocketConnectionManager:
         for client_connection in self.connections_per_ticker[ticker].values():
             client_connection.enqueue(message)
 
+    async def close_all(self) -> None:
+        """Closes all client connections across all tickers."""
+        for clients in self.connections_per_ticker.values():
+            for client in clients.values():
+                await client.close()
+        self.connections_per_ticker.clear()
+
     def get_connection_count(self, ticker: str) -> int:
         """
         Gets the number of active connections for a ticker.
