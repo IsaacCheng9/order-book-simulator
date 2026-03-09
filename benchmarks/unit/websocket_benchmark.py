@@ -111,7 +111,7 @@ async def benchmark_fan_out_throughput(
         print(
             f"{count:>12,} {num_broadcasts:>12,} "
             f"{count * num_broadcasts:>12,} "
-            f"{median_rate:>14,.0f} {median_latency:>17.3f} ms"
+            f"{median_rate:>14,.0f} {median_latency:>17.4f} ms"
         )
 
 
