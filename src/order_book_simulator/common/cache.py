@@ -1,8 +1,9 @@
+import os
 from dataclasses import asdict
-import orjson
 from typing import Any
 from uuid import UUID
 
+import orjson
 from redis.asyncio import Redis
 
 from order_book_simulator.common.models import MAX_DELTA_HISTORY, Delta
@@ -12,7 +13,9 @@ class OrderBookCache:
     """Manages order book data in Redis."""
 
     def __init__(
-        self, redis_url: str = "redis://redis:6379/0", max_trade_history: int = 1_000
+        self,
+        redis_url: str = os.getenv("REDIS_URL", "redis://redis:6379/0"),
+        max_trade_history: int = 1_000,
     ):
         """
         Creates a new order book cache.
