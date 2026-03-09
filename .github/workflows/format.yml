@@ -24,4 +24,4 @@ jobs:
       - name: Commit changes made by Ruff
         uses: stefanzweifel/git-auto-commit-action@master
         with:
-          commit_message: Format Python code with Ruff
+          commit_message: "style: Format Python code with Ruff"
