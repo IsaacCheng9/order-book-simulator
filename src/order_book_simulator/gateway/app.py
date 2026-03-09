@@ -1,3 +1,5 @@
+import os
+import asyncio
 import logging
 from contextlib import asynccontextmanager
 from importlib.metadata import version
@@ -11,7 +13,9 @@ from order_book_simulator.gateway.routers import (
     health_router,
     market_data_router,
     order_book_router,
+    ws_router,
 )
+from order_book_simulator.gateway.ws_manager import redis_pubsub_delta_subscriber
 
 logger = logging.getLogger(__name__)
 
@@ -26,12 +30,24 @@ async def lifespan(app: FastAPI):
         # Only start the producer, as we don't need the consumer in the
         # gateway.
         await app_state.producer.start()
+        app_state.redis_subscriber_task = asyncio.create_task(
+            redis_pubsub_delta_subscriber(
+                redis_url=os.getenv("REDIS_URL", "redis://redis:6379/0")
+            )
+        )
         logger.info("Producer started successfully")
         yield
     except Exception as e:
         logger.error(f"Error during startup: {e}")
         raise
     finally:
+        # Cancel the Redis Pub/Sub subscriber task.
+        if app_state.redis_subscriber_task:
+            app_state.redis_subscriber_task.cancel()
+            try:
+                await app_state.redis_subscriber_task
+            except asyncio.CancelledError:
+                pass
         # Shut down the producer once we're done.
         if app_state.producer:
             await app_state.producer.stop()
@@ -55,3 +71,4 @@ app.include_router(
     prefix="/v1/market-data",
     tags=["market-data"],
 )
+app.include_router(ws_router.ws_router, prefix="/v1/ws", tags=["websocket", "ws"])

@@ -1,8 +1,9 @@
+import os
 from dataclasses import asdict
-import orjson
 from typing import Any
 from uuid import UUID
 
+import orjson
 from redis.asyncio import Redis
 
 from order_book_simulator.common.models import MAX_DELTA_HISTORY, Delta
@@ -12,7 +13,9 @@ class OrderBookCache:
     """Manages order book data in Redis."""
 
     def __init__(
-        self, redis_url: str = "redis://redis:6379/0", max_trade_history: int = 1_000
+        self,
+        redis_url: str = os.getenv("REDIS_URL", "redis://redis:6379/0"),
+        max_trade_history: int = 1_000,
     ):
         """
         Creates a new order book cache.
@@ -178,6 +181,18 @@ class OrderBookCache:
         await self.redis.ltrim(deltas_key, -MAX_DELTA_HISTORY, -1)  # type: ignore[arg-type]
         last_delta_seq_number = self._get_delta_seq_key(stock_id)
         await self.redis.set(last_delta_seq_number, deltas[-1].sequence_number)
+
+    async def publish_deltas(self, ticker: str, deltas: list[Delta]) -> None:
+        """
+        Publishes deltas to the WebSocket channel for the given ticker.
+
+        Args:
+            ticker: The ticker to publish the deltas to.
+            deltas: The list of deltas to publish.
+        """
+        channel = f"ws:deltas:{ticker}"
+        payload = orjson.dumps([asdict(delta) for delta in deltas], default=str)
+        await self.redis.publish(channel, payload)
 
     async def get_deltas_since(
         self, stock_id: UUID, sequence_number: int

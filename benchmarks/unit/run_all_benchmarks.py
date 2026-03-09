@@ -2,8 +2,10 @@
 
 import asyncio
 
+from delta_payload_benchmark import run_benchmark as run_delta_payload_benchmark
 from matching_engine_benchmark import main as run_matching_engine_benchmark
 from order_book_benchmark import main as run_order_book_benchmark
+from websocket_benchmark import main as run_websocket_benchmark
 
 
 def main() -> None:
@@ -25,6 +27,20 @@ def main() -> None:
     print("=" * 80)
     print()
     asyncio.run(run_matching_engine_benchmark())
+    print()
+
+    print("=" * 80)
+    print("3. Delta Payload Benchmark (Snapshot vs Delta Bandwidth)")
+    print("=" * 80)
+    print()
+    run_delta_payload_benchmark()
+    print()
+
+    print("=" * 80)
+    print("4. WebSocket Benchmark (Fan-Out & Push Latency)")
+    print("=" * 80)
+    print()
+    asyncio.run(run_websocket_benchmark())
     print()
 
     print("=" * 80)

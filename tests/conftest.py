@@ -320,6 +320,9 @@ def mock_redis():
                 else:
                     mock_data[key] = mock_data[key][start : end + 1]
 
+        async def publish(self, channel: str, message: bytes) -> None:
+            pass
+
         async def xadd(
             self,
             key: str,
