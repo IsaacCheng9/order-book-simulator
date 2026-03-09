@@ -11,6 +11,17 @@ ws_connection_manager = WebSocketConnectionManager()
 
 @ws_router.websocket("/{ticker}")
 async def order_book_ws(websocket: WebSocket, ticker: str):
+    """
+    Handles a WebSocket connection for real-time order book updates.
+
+    Validates the ticker, sends an initial snapshot with the current sequence
+    number, then holds the connection open for delta broadcasts. Cleans up the
+    subscription on disconnect.
+
+    Args:
+        websocket: The WebSocket connection.
+        ticker: The ticker to subscribe to.
+    """
     await websocket.accept()
 
     # Validate the ticker against the DB.
