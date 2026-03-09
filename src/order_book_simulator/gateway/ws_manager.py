@@ -1,3 +1,5 @@
+import orjson
+from redis.asyncio import Redis
 from collections import defaultdict
 from typing import Any
 
@@ -71,3 +73,31 @@ class WebSocketConnectionManager:
             The number of active WebSocket connections.
         """
         return len(self.connections_per_ticker.get(ticker, set()))
+
+
+ws_manager = WebSocketConnectionManager()
+
+
+async def redis_subscriber(redis_url: str) -> None:
+    redis = Redis.from_url(redis_url)
+    pubsub = redis.pubsub()
+
+    try:
+        await pubsub.psubscribe("ws:deltas:*")
+
+        while True:
+            message = await pubsub.get_message(
+                ignore_subscribe_messages=True, timeout=1
+            )
+            if message is None:
+                continue
+
+            channel = message["channel"]
+            if isinstance(channel, bytes):
+                channel = channel.decode()
+            ticker = channel.split(":")[-1]
+            deltas = orjson.loads(message["data"])
+            await ws_manager.broadcast({"type": "deltas", "data": deltas}, ticker)
+    finally:
+        await pubsub.punsubscribe("ws:deltas:*")
+        await redis.aclose()
