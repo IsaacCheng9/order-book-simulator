@@ -358,7 +358,7 @@ async def main() -> None:
 
     await benchmark_fan_out_throughput(subscriber_counts)
     await benchmark_push_latency(subscriber_counts)
-    await benchmark_push_vs_polling([100, 500, 1_000, 5_000])
+    await benchmark_push_vs_polling([1, 10, 50, 100, 500, 1_000])
     await benchmark_snapshot_vs_delta_bandwidth()
 
     print()

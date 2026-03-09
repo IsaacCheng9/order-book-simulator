@@ -176,21 +176,23 @@ completion, measured with mock WebSocket connections:
 
 | Subscribers | Fan-Out (msg/s) | Push Latency p50 (μs) | Push Latency p99 (μs) |
 |------------:|----------------:|----------------------:|----------------------:|
-| 1           | 130,375         | 16.8                  | 122.9                 |
-| 10          | 79,347          | 89.7                  | 257.9                 |
-| 50          | 57,201          | 528.5                 | 7,885.0               |
-| 100         | 49,354          | 1,113.8               | 15,576.6              |
+| 1           | 132,880         | 17.4                  | 138.9                 |
+| 10          | 81,577          | 90.3                  | 276.9                 |
+| 50          | 59,757          | 536.3                 | 9,436.6               |
+| 100         | 53,611          | 1,132.5               | 10,098.0              |
 
 Push latency vs polling comparison (single subscriber):
 
 | Polling Interval | Avg Polling Latency | WebSocket Speedup |
 |-----------------:|--------------------:|------------------:|
-| 100ms            | 50.0ms              | 2,864x            |
-| 500ms            | 250.0ms             | 14,319x           |
-| 1,000ms          | 500.0ms             | 28,639x           |
-| 5,000ms          | 2,500.0ms           | 143,193x          |
+| 1ms              | 0.5ms               | 30x               |
+| 10ms             | 5.0ms               | 296x              |
+| 50ms             | 25.0ms              | 1,481x            |
+| 100ms            | 50.0ms              | 2,963x            |
+| 500ms            | 250.0ms             | 14,815x           |
+| 1,000ms          | 500.0ms             | 29,630x           |
 
-Delta streaming achieves an **86.1% bandwidth reduction** over full snapshot
+Delta streaming achieves an **86.1% bandwidth reduction** over snapshot
 polling (269 bytes vs 1,938 bytes average per update).
 
 #### Integration Benchmarks (Requires Docker Compose)
