@@ -3,10 +3,9 @@ from fastapi import APIRouter, WebSocket
 from order_book_simulator.common.cache import order_book_cache
 from order_book_simulator.database.connection import AsyncSessionLocal
 from order_book_simulator.database.queries import get_stock_by_ticker
-from order_book_simulator.gateway.ws_manager import WebSocketConnectionManager
+from order_book_simulator.gateway.ws_manager import ws_manager
 
 ws_router = APIRouter()
-ws_connection_manager = WebSocketConnectionManager()
 
 
 @ws_router.websocket("/{ticker}")
@@ -47,9 +46,9 @@ async def order_book_ws(websocket: WebSocket, ticker: str):
         }
     )
 
-    ws_connection_manager.subscribe(websocket, ticker)
+    ws_manager.subscribe(websocket, ticker)
     try:
         while True:
             await websocket.receive_text()
     finally:
-        ws_connection_manager.unsubscribe(websocket, ticker)
+        ws_manager.unsubscribe(websocket, ticker)
