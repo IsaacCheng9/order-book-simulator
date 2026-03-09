@@ -1,8 +1,12 @@
-from unittest.mock import AsyncMock, MagicMock
+import asyncio
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from order_book_simulator.gateway.ws_manager import WebSocketConnectionManager
+from order_book_simulator.gateway.ws_manager import (
+    ClientConnection,
+    WebSocketConnectionManager,
+)
 
 
 @pytest.fixture
@@ -11,15 +15,33 @@ def manager():
     return WebSocketConnectionManager()
 
 
-def test_subscribe_adds_connection(manager):
-    """Tests that subscribing adds the connection to the ticker set."""
+def _mock_ws() -> AsyncMock:
+    """Creates a mock WebSocket with an async send_json."""
+    ws = AsyncMock()
+    ws.send_json = AsyncMock()
+    return ws
+
+
+# --- Subscribe / unsubscribe / count ---
+
+
+@patch(
+    "order_book_simulator.gateway.ws_manager.ClientConnection",
+    autospec=True,
+)
+def test_subscribe_adds_connection(mock_client_cls, manager):
+    """Tests that subscribing adds the connection to the ticker."""
     ws = MagicMock()
     manager.subscribe(ws, "AAPL")
 
     assert manager.get_connection_count("AAPL") == 1
 
 
-def test_subscribe_multiple_connections(manager):
+@patch(
+    "order_book_simulator.gateway.ws_manager.ClientConnection",
+    autospec=True,
+)
+def test_subscribe_multiple_connections(mock_client_cls, manager):
     """Tests subscribing multiple connections to the same ticker."""
     ws1 = MagicMock()
     ws2 = MagicMock()
@@ -29,7 +51,11 @@ def test_subscribe_multiple_connections(manager):
     assert manager.get_connection_count("AAPL") == 2
 
 
-def test_subscribe_different_tickers(manager):
+@patch(
+    "order_book_simulator.gateway.ws_manager.ClientConnection",
+    autospec=True,
+)
+def test_subscribe_different_tickers(mock_client_cls, manager):
     """Tests subscribing to different tickers independently."""
     ws1 = MagicMock()
     ws2 = MagicMock()
@@ -40,99 +66,152 @@ def test_subscribe_different_tickers(manager):
     assert manager.get_connection_count("GOOGL") == 1
 
 
-def test_unsubscribe_removes_connection(manager):
+@pytest.mark.asyncio
+@patch(
+    "order_book_simulator.gateway.ws_manager.ClientConnection",
+    autospec=True,
+)
+async def test_unsubscribe_removes_connection(mock_client_cls, manager):
     """Tests that unsubscribing removes the connection."""
     ws = MagicMock()
     manager.subscribe(ws, "AAPL")
-    manager.unsubscribe(ws, "AAPL")
+    await manager.unsubscribe(ws, "AAPL")
 
     assert manager.get_connection_count("AAPL") == 0
 
 
-def test_unsubscribe_cleans_up_empty_ticker(manager):
+@pytest.mark.asyncio
+@patch(
+    "order_book_simulator.gateway.ws_manager.ClientConnection",
+    autospec=True,
+)
+async def test_unsubscribe_cleans_up_empty_ticker(mock_client_cls, manager):
     """Tests that empty ticker entries are removed from the dict."""
     ws = MagicMock()
     manager.subscribe(ws, "AAPL")
-    manager.unsubscribe(ws, "AAPL")
+    await manager.unsubscribe(ws, "AAPL")
 
     assert "AAPL" not in manager.connections_per_ticker
 
 
-def test_unsubscribe_preserves_other_connections(manager):
+@pytest.mark.asyncio
+@patch(
+    "order_book_simulator.gateway.ws_manager.ClientConnection",
+    autospec=True,
+)
+async def test_unsubscribe_preserves_other_connections(mock_client_cls, manager):
     """Tests that unsubscribing one connection doesn't affect others."""
     ws1 = MagicMock()
     ws2 = MagicMock()
     manager.subscribe(ws1, "AAPL")
     manager.subscribe(ws2, "AAPL")
-    manager.unsubscribe(ws1, "AAPL")
+    await manager.unsubscribe(ws1, "AAPL")
 
     assert manager.get_connection_count("AAPL") == 1
 
 
 @pytest.mark.asyncio
-async def test_broadcast_sends_to_all_subscribers(manager):
-    """Tests that broadcast sends the message to all subscribers."""
-    ws1 = AsyncMock()
-    ws2 = AsyncMock()
-    manager.subscribe(ws1, "AAPL")
-    manager.subscribe(ws2, "AAPL")
+@patch(
+    "order_book_simulator.gateway.ws_manager.ClientConnection",
+    autospec=True,
+)
+async def test_unsubscribe_cancels_sender_task(mock_client_cls, manager):
+    """Tests that unsubscribing cancels the client's sender task."""
+    ws = MagicMock()
+    manager.subscribe(ws, "AAPL")
+    client = manager.connections_per_ticker["AAPL"][ws]
+    await manager.unsubscribe(ws, "AAPL")
+
+    client.close.assert_called_once()
+
+
+# --- Broadcast ---
+
+
+def test_broadcast_enqueues_to_all_subscribers(manager):
+    """Tests that broadcast enqueues the message to all subscribers."""
+    client1 = MagicMock()
+    client2 = MagicMock()
+    manager.connections_per_ticker["AAPL"] = {
+        MagicMock(): client1,
+        MagicMock(): client2,
+    }
 
     message = {"type": "deltas", "data": []}
-    await manager.broadcast(message, "AAPL")
+    manager.broadcast(message, "AAPL")
 
-    ws1.send_json.assert_called_once_with(message)
-    ws2.send_json.assert_called_once_with(message)
+    client1.enqueue.assert_called_once_with(message)
+    client2.enqueue.assert_called_once_with(message)
 
 
-@pytest.mark.asyncio
-async def test_broadcast_does_not_send_to_other_tickers(manager):
+def test_broadcast_does_not_send_to_other_tickers(manager):
     """Tests that broadcast only sends to the target ticker."""
-    ws_aapl = AsyncMock()
-    ws_googl = AsyncMock()
-    manager.subscribe(ws_aapl, "AAPL")
-    manager.subscribe(ws_googl, "GOOGL")
+    client_aapl = MagicMock()
+    client_googl = MagicMock()
+    manager.connections_per_ticker["AAPL"] = {
+        MagicMock(): client_aapl,
+    }
+    manager.connections_per_ticker["GOOGL"] = {
+        MagicMock(): client_googl,
+    }
 
-    await manager.broadcast({"type": "deltas"}, "AAPL")
+    manager.broadcast({"type": "deltas"}, "AAPL")
 
-    ws_aapl.send_json.assert_called_once()
-    ws_googl.send_json.assert_not_called()
-
-
-@pytest.mark.asyncio
-async def test_broadcast_removes_dead_connections(manager):
-    """Tests that dead connections are cleaned up during broadcast."""
-    ws_alive = AsyncMock()
-    ws_dead = AsyncMock()
-    ws_dead.send_json.side_effect = Exception("connection closed")
-    manager.subscribe(ws_alive, "AAPL")
-    manager.subscribe(ws_dead, "AAPL")
-
-    await manager.broadcast({"type": "deltas"}, "AAPL")
-
-    assert manager.get_connection_count("AAPL") == 1
-    ws_alive.send_json.assert_called_once()
-
-
-@pytest.mark.asyncio
-async def test_broadcast_dead_connection_does_not_block_others(manager):
-    """
-    Tests that a dead connection doesn't prevent other clients from
-    receiving the message.
-    """
-    ws_dead = AsyncMock()
-    ws_dead.send_json.side_effect = Exception("connection closed")
-    ws_alive = AsyncMock()
-    manager.subscribe(ws_dead, "AAPL")
-    manager.subscribe(ws_alive, "AAPL")
-
-    message = {"type": "deltas", "data": []}
-    await manager.broadcast(message, "AAPL")
-
-    ws_alive.send_json.assert_called_once_with(message)
+    client_aapl.enqueue.assert_called_once()
+    client_googl.enqueue.assert_not_called()
 
 
 def test_get_connection_count_unknown_ticker(manager):
     """Tests that an unknown ticker returns 0 without side effects."""
     assert manager.get_connection_count("UNKNOWN") == 0
-    # Should not create an entry in the defaultdict.
     assert "UNKNOWN" not in manager.connections_per_ticker
+
+
+# --- ClientConnection ---
+
+
+@pytest.mark.asyncio
+async def test_client_connection_enqueue_and_send():
+    """Tests that enqueued messages are sent via the sender task."""
+    ws = _mock_ws()
+    client = ClientConnection(ws)
+
+    message = {"type": "deltas", "data": []}
+    assert client.enqueue(message) is True
+
+    # Let the sender task process the message.
+    await asyncio.sleep(0.01)
+
+    ws.send_json.assert_called_once_with(message)
+    await client.close()
+
+
+@pytest.mark.asyncio
+async def test_client_connection_enqueue_full_queue():
+    """Tests that enqueue returns False when the queue is full."""
+    ws = _mock_ws()
+    # Pause send_json so the queue fills up.
+    ws.send_json = AsyncMock(side_effect=lambda _: asyncio.sleep(10))
+    client = ClientConnection(ws, max_queue_size=2)
+
+    assert client.enqueue({"seq": 1}) is True
+    assert client.enqueue({"seq": 2}) is True
+    # Queue is now full.
+    assert client.enqueue({"seq": 3}) is False
+
+    await client.close()
+
+
+@pytest.mark.asyncio
+async def test_client_connection_send_loop_exits_on_dead_ws():
+    """Tests that the sender task exits when send_json raises."""
+    ws = _mock_ws()
+    ws.send_json.side_effect = Exception("connection closed")
+    client = ClientConnection(ws)
+
+    client.enqueue({"type": "deltas"})
+    # Wait for the sender task to exit.
+    await asyncio.sleep(0.01)
+    assert client.sender_task.done()
+
+    await client.close()

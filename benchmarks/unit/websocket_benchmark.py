@@ -98,19 +98,20 @@ async def benchmark_fan_out_throughput(
 
             start = time.perf_counter()
             for _ in range(num_broadcasts):
-                await manager.broadcast(message, TICKER)
+                manager.broadcast(message, TICKER)
             elapsed = time.perf_counter() - start
 
             total_messages = count * num_broadcasts
             run_rates.append(total_messages / elapsed)
             run_latencies.append((elapsed / num_broadcasts) * 1_000)
+            await manager.close_all()
 
         median_rate = statistics.median(run_rates)
         median_latency = statistics.median(run_latencies)
         print(
             f"{count:>12,} {num_broadcasts:>12,} "
             f"{count * num_broadcasts:>12,} "
-            f"{median_rate:>14,.0f} {median_latency:>17.3f} ms"
+            f"{median_rate:>14,.0f} {median_latency:>17.4f} ms"
         )
 
 
@@ -173,7 +174,7 @@ async def benchmark_push_latency(
                         "type": "deltas",
                         "data": [asdict(d) for d in deltas],
                     }
-                    await manager.broadcast(message, TICKER)
+                    manager.broadcast(message, TICKER)
 
                 elapsed = time.perf_counter() - start
                 latencies.append(elapsed * 1_000_000)
@@ -185,6 +186,7 @@ async def benchmark_push_latency(
             run_p50s.append(latencies[p50_idx])
             run_p95s.append(latencies[p95_idx])
             run_p99s.append(latencies[p99_idx])
+            await manager.close_all()
 
         print(
             f"{count:>12,} {num_operations:>12,} "
@@ -241,12 +243,13 @@ async def benchmark_push_vs_polling(
                     "type": "deltas",
                     "data": [asdict(d) for d in deltas],
                 }
-                await manager.broadcast(message, TICKER)
+                manager.broadcast(message, TICKER)
             elapsed = time.perf_counter() - start
             latencies.append(elapsed * 1_000_000)
 
         latencies.sort()
         run_medians.append(latencies[len(latencies) // 2])
+        await manager.close_all()
 
     push_latency_us = statistics.median(run_medians)
     push_latency_ms = push_latency_us / 1_000
@@ -354,7 +357,7 @@ async def main() -> None:
     print(f"Runs per benchmark: {NUM_RUNS} (reporting median)")
     print()
 
-    subscriber_counts = [1, 10, 50, 100]
+    subscriber_counts = [1, 10, 50, 100, 500, 1_000]
 
     await benchmark_fan_out_throughput(subscriber_counts)
     await benchmark_push_latency(subscriber_counts)
