@@ -8,14 +8,24 @@ from redis.asyncio import Redis
 
 
 class ClientConnection:
-    def __init__(self, websocket: WebSocket, max_queue_size: int = 64):
-        self.websocket = websocket
+    """
+    Wraps a WebSocket with a bounded send queue and dedicated sender task to
+    prevent slow consumers from blocking broadcast to other clients.
+    """
+
+    def __init__(self, websocket: WebSocket, max_queue_size: int = 64) -> None:
+        self.websocket: WebSocket = websocket
         self.queue: asyncio.Queue[dict[str, Any]] = asyncio.Queue(
             maxsize=max_queue_size
         )
         self.sender_task: asyncio.Task = asyncio.create_task(self._send_loop())
 
     async def _send_loop(self) -> None:
+        """
+        Pulls messages from the queue and sends them to the client.
+
+        Exits on send failure, indicating a dead connection.
+        """
         while True:
             message: dict[str, Any] = await self.queue.get()
             try:
@@ -25,6 +35,17 @@ class ClientConnection:
             self.queue.task_done()
 
     def enqueue(self, message: dict[str, Any]) -> bool:
+        """
+        Non-blocking enqueue.
+
+        If the queue i s full, the client is too slow and the message is dropped.
+
+        Args:
+            message: The JSON-serialisable message to enqueue.
+
+        Returns:
+            True if the message was enqueued, False if it was dropped.
+        """
         try:
             self.queue.put_nowait(message)
         except asyncio.QueueFull:
@@ -32,6 +53,7 @@ class ClientConnection:
         return True
 
     async def close(self) -> None:
+        """Cancels the sender task."""
         self.sender_task.cancel()
         try:
             await self.sender_task
