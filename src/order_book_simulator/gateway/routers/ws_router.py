@@ -54,4 +54,4 @@ async def order_book_ws(websocket: WebSocket, ticker: str):
     except WebSocketDisconnect:
         pass
     finally:
-        ws_manager.unsubscribe(websocket, ticker)
+        await ws_manager.unsubscribe(websocket, ticker)

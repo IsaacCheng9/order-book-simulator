@@ -38,7 +38,7 @@ class ClientConnection:
         """
         Non-blocking enqueue.
 
-        If the queue i s full, the client is too slow and the message is dropped.
+        If the queue is full, the client is too slow and the message is dropped.
 
         Args:
             message: The JSON-serialisable message to enqueue.
@@ -67,7 +67,9 @@ class WebSocketConnectionManager:
     """
 
     def __init__(self) -> None:
-        self.connections_per_ticker: dict[str, set[WebSocket]] = defaultdict(set)
+        self.connections_per_ticker: dict[str, dict[WebSocket, ClientConnection]] = (
+            defaultdict(dict)
+        )
 
     def subscribe(self, websocket: WebSocket, ticker: str) -> None:
         """
@@ -77,9 +79,10 @@ class WebSocketConnectionManager:
             websocket: The WebSocket connection to register.
             ticker: The ticker to subscribe to.
         """
-        self.connections_per_ticker[ticker].add(websocket)
+        new_connection = ClientConnection(websocket)
+        self.connections_per_ticker[ticker][websocket] = new_connection
 
-    def unsubscribe(self, websocket: WebSocket, ticker: str) -> None:
+    async def unsubscribe(self, websocket: WebSocket, ticker: str) -> None:
         """
         Unsubscribes a WebSocket connection from a ticker.
 
@@ -89,33 +92,28 @@ class WebSocketConnectionManager:
             websocket: The WebSocket connection to remove.
             ticker: The ticker to unsubscribe from.
         """
-        self.connections_per_ticker[ticker].remove(websocket)
+        popped: ClientConnection | None = self.connections_per_ticker[ticker].pop(
+            websocket, None
+        )
+        if popped is not None:
+            await popped.close()
         if not self.connections_per_ticker[ticker]:
             del self.connections_per_ticker[ticker]
 
-    async def broadcast(self, message: dict[str, Any], ticker: str) -> None:
+    def broadcast(self, message: dict[str, Any], ticker: str) -> None:
         """
-        Sends a message to all clients subscribed to a ticker.
+        Enqueue a message to all clients subscribed to a ticker.
 
-        Dead connections are detected and cleaned up without blocking other
-        clients.
+        Uses non-blocking put_nowait so broadcast time is independent
+        of individual client send speeds. Messages are dropped for
+        slow consumers whose queues are full.
 
         Args:
             message: The JSON-serialisable message to send.
             ticker: The ticker to broadcast to.
         """
-        dead_connections: list[WebSocket] = []
-
-        # Iterate over a copy to avoid RuntimeError from set
-        # mutation during iteration.
-        for connection in self.connections_per_ticker[ticker].copy():
-            try:
-                await connection.send_json(message)
-            except Exception:
-                dead_connections.append(connection)
-
-        for connection in dead_connections:
-            self.unsubscribe(connection, ticker)
+        for client_connection in self.connections_per_ticker[ticker].values():
+            client_connection.enqueue(message)
 
     def get_connection_count(self, ticker: str) -> int:
         """
@@ -127,7 +125,7 @@ class WebSocketConnectionManager:
         Returns:
             The number of active WebSocket connections.
         """
-        return len(self.connections_per_ticker.get(ticker, set()))
+        return len(self.connections_per_ticker.get(ticker, {}))
 
 
 ws_manager = WebSocketConnectionManager()
@@ -159,7 +157,7 @@ async def redis_pubsub_delta_subscriber(redis_url: str) -> None:
                 channel = channel.decode()
             ticker = channel.split(":")[-1]
             deltas = orjson.loads(message["data"])
-            await ws_manager.broadcast({"type": "deltas", "data": deltas}, ticker)
+            ws_manager.broadcast({"type": "deltas", "data": deltas}, ticker)
     finally:
         await pubsub.punsubscribe("ws:deltas:*")
         await redis.aclose()
