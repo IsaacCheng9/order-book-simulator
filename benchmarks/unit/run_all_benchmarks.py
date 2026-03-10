@@ -9,7 +9,7 @@ from order_book_benchmark import main as run_order_book_benchmark
 from websocket_benchmark import main as run_websocket_benchmark
 
 
-def main() -> None:
+async def main() -> None:
     """Runs all unit benchmarks in sequence."""
     print("=" * 80)
     print("Unit Benchmarks")
@@ -27,7 +27,7 @@ def main() -> None:
     print("2. Matching Engine Benchmark (Mocked I/O)")
     print("=" * 80)
     print()
-    asyncio.run(run_matching_engine_benchmark())
+    await run_matching_engine_benchmark()
     print()
 
     print("=" * 80)
@@ -41,14 +41,14 @@ def main() -> None:
     print("4. WebSocket Benchmark (Fan-Out & Push Latency)")
     print("=" * 80)
     print()
-    asyncio.run(run_websocket_benchmark())
+    await run_websocket_benchmark()
     print()
 
     print("=" * 80)
-    print("5. Multicast Benchmark (Wire Format & Publisher)")
+    print("5. UDP Multicast Benchmark (Fan-Out Scaling)")
     print("=" * 80)
     print()
-    asyncio.run(run_multicast_benchmark())
+    await run_multicast_benchmark()
     print()
 
     print("=" * 80)
@@ -57,4 +57,4 @@ def main() -> None:
 
 
 if __name__ == "__main__":
-    main()
+    asyncio.run(main())

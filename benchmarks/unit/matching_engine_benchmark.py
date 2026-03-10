@@ -43,7 +43,7 @@ def create_order(
         "price": price,
         "quantity": Decimal("100"),
         "side": side,
-        "type": OrderType.LIMIT,
+        "order_type": OrderType.LIMIT,
         "created_at": datetime.now(timezone.utc),
     }
 
