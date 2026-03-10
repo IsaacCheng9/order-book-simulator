@@ -1,3 +1,4 @@
+import asyncio
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -88,3 +89,70 @@ def test_multiple_sends_use_same_socket(mock_socket_cls):
     publisher.send_heartbeat(3)
 
     assert mock_sock.sendto.call_count == 3
+
+
+@pytest.mark.asyncio
+@patch("order_book_simulator.multicast.multicast_publisher.socket.socket")
+async def test_heartbeat_loop_sends_periodically(mock_socket_cls):
+    """Tests that the heartbeat loop sends multiple heartbeats."""
+    mock_sock = MagicMock()
+    mock_socket_cls.return_value = mock_sock
+
+    publisher = MulticastPublisher(GROUP, PORT)
+    await publisher.start_heartbeat_task(interval_seconds=0.05)
+    # Let a few heartbeats fire.
+    await asyncio.sleep(0.18)
+    await publisher.stop_heartbeat_task()
+
+    # Should have sent at least 3 heartbeats.
+    assert mock_sock.sendto.call_count >= 3
+    # Every message should be a heartbeat.
+    for call in mock_sock.sendto.call_args_list:
+        sent_data = call[0][0]
+        msg_type, _, payload = decode(sent_data)
+        assert msg_type == HEARTBEAT
+        assert payload == b""
+
+
+@pytest.mark.asyncio
+@patch("order_book_simulator.multicast.multicast_publisher.socket.socket")
+async def test_stop_heartbeat_exits_immediately(mock_socket_cls):
+    """Tests that stop_heartbeat_task wakes the loop without waiting."""
+    mock_sock = MagicMock()
+    mock_socket_cls.return_value = mock_sock
+
+    publisher = MulticastPublisher(GROUP, PORT)
+    await publisher.start_heartbeat_task(interval_seconds=10.0)
+    # Stop immediately - should not block for 10 seconds.
+    await publisher.stop_heartbeat_task()
+
+    assert publisher._heartbeat_task is None
+
+
+@pytest.mark.asyncio
+@patch("order_book_simulator.multicast.multicast_publisher.socket.socket")
+async def test_close_stops_heartbeat_and_socket(mock_socket_cls):
+    """Tests that close stops the heartbeat and closes the socket."""
+    mock_sock = MagicMock()
+    mock_socket_cls.return_value = mock_sock
+
+    publisher = MulticastPublisher(GROUP, PORT)
+    await publisher.start_heartbeat_task(interval_seconds=0.05)
+    await asyncio.sleep(0.08)
+    await publisher.close()
+
+    assert publisher._heartbeat_task is None
+    mock_sock.close.assert_called_once()
+
+
+@pytest.mark.asyncio
+@patch("order_book_simulator.multicast.multicast_publisher.socket.socket")
+async def test_stop_heartbeat_without_start_is_noop(mock_socket_cls):
+    """Tests that stopping without starting does not raise."""
+    mock_sock = MagicMock()
+    mock_socket_cls.return_value = mock_sock
+
+    publisher = MulticastPublisher(GROUP, PORT)
+    await publisher.stop_heartbeat_task()
+
+    assert publisher._heartbeat_task is None
