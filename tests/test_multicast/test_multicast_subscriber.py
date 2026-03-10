@@ -110,19 +110,15 @@ def test_gap_recovery_calls_correct_url(subscriber, monkeypatch):
         "deltas": [],
         "current_delta_sequence_number": 3,
     }
-    calls = []
-
-    def mock_get(*args, **kwargs):
-        calls.append((args, kwargs))
-        return mock_response
-
+    mock_get = MagicMock(return_value=mock_response)
     monkeypatch.setattr(httpx, "get", mock_get)
 
     subscriber.process_message(encode(DELTA, 3, orjson.dumps({"seq": 3})))
 
-    assert len(calls) == 1
-    assert calls[0][0][0] == f"{RECOVERY_URL}/deltas"
-    assert calls[0][1]["params"] == {"sequence_number": 0}
+    mock_get.assert_called_once_with(
+        f"{RECOVERY_URL}/deltas",
+        params={"sequence_number": 0},
+    )
 
 
 # --- Snapshot fallback (evicted sequence) ---
@@ -157,12 +153,7 @@ def test_burst_loss_triggers_snapshot_recovery(subscriber, monkeypatch):
     mock_response.json.return_value = {
         "book": {"bids": [{"price": "100.00"}], "asks": []},
     }
-    calls = []
-
-    def mock_get(*args, **kwargs):
-        calls.append((args, kwargs))
-        return mock_response
-
+    mock_get = MagicMock(return_value=mock_response)
     monkeypatch.setattr(httpx, "get", mock_get)
 
     # Process seq 1 in order.
@@ -172,8 +163,7 @@ def test_burst_loss_triggers_snapshot_recovery(subscriber, monkeypatch):
     subscriber.process_message(encode(DELTA, 7, orjson.dumps({"seq": 7})))
 
     # Should have called the base URL, not /deltas.
-    assert len(calls) == 1
-    assert calls[0][0][0] == RECOVERY_URL
+    mock_get.assert_called_once_with(RECOVERY_URL)
     assert subscriber.snapshot == {
         "bids": [{"price": "100.00"}],
         "asks": [],
