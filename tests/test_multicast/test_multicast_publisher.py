@@ -17,9 +17,16 @@ PORT = 5555
 
 @pytest.fixture
 def mock_socket(monkeypatch):
-    """Patches the socket constructor to return a MagicMock."""
+    """Patches the socket module on the publisher to return a MagicMock.
+
+    Replaces the module-level ``socket`` name rather than the global
+    ``socket.socket`` class so asyncio's event loop (which creates
+    real sockets internally) is unaffected.
+    """
     mock_sock = MagicMock()
-    monkeypatch.setattr(pub_module.socket, "socket", lambda *a, **kw: mock_sock)
+    mock_socket_module = MagicMock()
+    mock_socket_module.socket.return_value = mock_sock
+    monkeypatch.setattr(pub_module, "socket", mock_socket_module)
     return mock_sock
 
 
