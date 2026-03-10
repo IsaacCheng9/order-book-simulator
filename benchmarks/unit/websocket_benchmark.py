@@ -1,9 +1,22 @@
 """
 Benchmark harness for WebSocket fan-out performance.
 
-Measures broadcast throughput, push latency, and scaling behaviour of
-the WebSocketConnectionManager under increasing subscriber counts.
-No Docker services required - uses mock WebSocket connections.
+Measures broadcast throughput, push latency, and scaling behaviour of the
+WebSocketConnectionManager under increasing subscriber counts. Uses mock
+WebSocket connections so no Docker services are required.
+
+Benchmarks:
+- Fan-out throughput: messages enqueued per second across varying subscriber
+  counts. Measures the cost of iterating N clients and calling put_nowait on
+  each bounded queue.
+- Push latency: end-to-end time from order book operation (add order, extract
+  deltas, serialise) to broadcast completion, reported as p50/p95/p99
+  percentiles.
+- Push vs polling: compares the measured push latency against theoretical
+  average polling latency at various intervals to quantify the server-push
+  advantage.
+- Snapshot vs delta bandwidth: compares total bytes sent if every update were a
+  full snapshot vs the delta streaming approach.
 """
 
 import asyncio
