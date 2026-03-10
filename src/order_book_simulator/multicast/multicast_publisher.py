@@ -31,6 +31,16 @@ class MulticastPublisher:
         self._heartbeat_task: asyncio.Task[None] | None = None
 
     async def _heartbeat_loop(self, interval_seconds: float) -> None:
+        """
+        Sends periodic heartbeats until the stop event is set.
+
+        Uses asyncio.wait_for on the stop event so that `stop_heartbeat_task()`
+        wakes the loop immediately instead of waiting for the sleep interval to
+        elapse.
+
+        Args:
+            interval_seconds: Seconds between heartbeats.
+        """
         while not self._stop_event.is_set():
             # Send a heartbeat with sequence number 0 as heartbeats carry no
             # data, meaning they don't need real sequence numbers.
@@ -69,17 +79,26 @@ class MulticastPublisher:
         self.socket.sendto(message, (self.group, self.port))
 
     async def start_heartbeat_task(self, interval_seconds: float = 1.0) -> None:
+        """
+        Starts the background heartbeat loop.
+
+        Args:
+            interval_seconds: Seconds between heartbeats.
+        """
         self._heartbeat_task = asyncio.create_task(
             self._heartbeat_loop(interval_seconds)
         )
 
     async def stop_heartbeat_task(self) -> None:
+        """
+        Stops the background heartbeat loop and waits for it to finish.
+        """
         self._stop_event.set()
         if self._heartbeat_task:
             await self._heartbeat_task
             self._heartbeat_task = None
 
     async def close(self) -> None:
-        """Closes the UDP socket."""
+        """Stops the heartbeat loop and closes the UDP socket."""
         await self.stop_heartbeat_task()
         self.socket.close()
