@@ -1,13 +1,14 @@
 import asyncio
-import orjson
 import logging
 from datetime import datetime, timezone
 
+import orjson
 from aiokafka import AIOKafkaConsumer, AIOKafkaProducer, ConsumerRecord
 from redis.asyncio import Redis
-from order_book_simulator.multicast.multicast_publisher import MulticastPublisher
+
 from order_book_simulator.market_data.analytics import MarketDataAnalytics
 from order_book_simulator.matching.matching_engine import MatchingEngine
+from order_book_simulator.multicast.multicast_publisher import MulticastPublisher
 
 logger = logging.getLogger(__name__)
 

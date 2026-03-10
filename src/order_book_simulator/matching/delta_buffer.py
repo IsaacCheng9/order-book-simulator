@@ -1,7 +1,8 @@
 import time
-from uuid import UUID
-from decimal import Decimal
 from collections import deque
+from decimal import Decimal
+from uuid import UUID
+
 from order_book_simulator.common.models import (
     MAX_DELTA_HISTORY,
     Delta,

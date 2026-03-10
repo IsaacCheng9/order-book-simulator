@@ -1,8 +1,9 @@
-import orjson
-from typing import Any
-import httpx
 import socket
 import struct
+from typing import Any
+
+import httpx
+import orjson
 
 from order_book_simulator.multicast.wire_format import DELTA, decode
 

@@ -1,7 +1,8 @@
 import asyncio
 import socket
 import struct
-from order_book_simulator.multicast.wire_format import encode, DELTA, HEARTBEAT
+
+from order_book_simulator.multicast.wire_format import DELTA, HEARTBEAT, encode
 
 
 class MulticastPublisher:
