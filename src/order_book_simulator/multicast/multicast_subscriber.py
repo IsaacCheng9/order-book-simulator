@@ -1,3 +1,6 @@
+import orjson
+from typing import Any
+import httpx
 import socket
 import struct
 
@@ -13,7 +16,8 @@ class MulticastSubscriber:
         self.recovery_base_url = recovery_base_url
         self.burst_threshold = burst_threshold
         self.expected_sequence = 1
-        self.deltas: list[bytes] = []
+        self.deltas: list[dict[str, Any]] = []
+        self.snapshot: dict[str, Any] | None = None
 
         self.socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         self.socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
@@ -22,7 +26,29 @@ class MulticastSubscriber:
         self.socket.setsockopt(socket.IPPROTO_IP, socket.IP_ADD_MEMBERSHIP, mreq)
 
     def _recover_gap(self, from_sequence_number: int, to_sequence_number: int) -> None:
-        pass
+        gap_size = to_sequence_number - from_sequence_number
+
+        # Too many deltas missed, so we need to request a full snapshot from
+        # the recovery server.
+        if gap_size >= self.burst_threshold:
+            response = httpx.get(self.recovery_base_url)
+            data: dict[str, Any] = response.json()
+            self.snapshot = data["book"]
+            self.deltas.clear()
+        # Recover the gap by requesting the missing deltas from the recovery
+        # server.
+        else:
+            url = f"{self.recovery_base_url}/deltas"
+            response = httpx.get(
+                url, params={"sequence_number": from_sequence_number - 1}
+            )
+            data = response.json()
+            if "deltas" in data:
+                self.deltas.extend(data["deltas"])
+            # Snapshot fallback.
+            else:
+                self.snapshot = data["snapshot"]
+                self.deltas.clear()
 
     def process_message(self, data: bytes) -> None:
         message_type, sequence_number, payload = decode(data)
@@ -30,14 +56,16 @@ class MulticastSubscriber:
         # We're up-to-date, so process the message.
         if sequence_number == self.expected_sequence:
             if message_type == DELTA:
-                self.deltas.append(payload)
+                deserialised_payload: dict[str, Any] = orjson.loads(payload)
+                self.deltas.append(deserialised_payload)
             self.expected_sequence += 1
         # We've missed some deltas, so recover the gap before processing the
         # current message.
         elif sequence_number > self.expected_sequence:
             self._recover_gap(self.expected_sequence, sequence_number)
             if message_type == DELTA:
-                self.deltas.append(payload)
+                deserialised_payload: dict[str, Any] = orjson.loads(payload)
+                self.deltas.append(deserialised_payload)
             self.expected_sequence = sequence_number + 1
         # Already seen this sequence number, so ignore it silently.
         else:
