@@ -76,14 +76,14 @@ async def benchmark_fan_out_scaling(
     Compare publisher-side cost per broadcast as subscriber count
     grows.
 
-    Multicast: one sendto() per message regardless of subscribers.
+    UDP Multicast: one sendto() per message regardless of subscribers.
     WebSocket: one enqueue() per subscriber per message.
     """
-    print("Fan-Out Scaling: Multicast vs WebSocket")
+    print("Fan-Out Scaling: UDP Multicast vs WebSocket")
     print("-" * 70)
     print(
         f"{'Subscribers':>12} "
-        f"{'Multicast us/msg':>18} "
+        f"{'UDP Multicast us/msg':>18} "
         f"{'WebSocket us/msg':>18} "
         f"{'Ratio':>8}"
     )
@@ -95,7 +95,7 @@ async def benchmark_fan_out_scaling(
     }
 
     for count in subscriber_counts:
-        # Multicast: single sendto per broadcast.
+        # UDP Multicast: single sendto per broadcast.
         mc_times: list[float] = []
         for _ in range(NUM_RUNS):
             publisher = _create_mock_publisher()
@@ -138,17 +138,17 @@ async def benchmark_publish_latency(
     Measure end-to-end latency from order book operation to publish
     for both multicast and WebSocket at varying subscriber counts.
 
-    Multicast: add order + extract deltas + encode + sendto.
+    UDP Multicast: add order + extract deltas + encode + sendto.
     WebSocket: add order + extract deltas + serialise + broadcast.
     """
     print("\nPublish Latency: Order Book -> Deliver (p50, in microseconds)")
     print("-" * 70)
     print(
-        f"{'Subscribers':>12} {'Multicast p50':>16} {'WebSocket p50':>16} {'Ratio':>8}"
+        f"{'Subscribers':>12} {'UDP Multicast p50':>16} {'WebSocket p50':>16} {'Ratio':>8}"
     )
 
     for count in subscriber_counts:
-        # Multicast path.
+        # UDP Multicast path.
         mc_p50s: list[float] = []
         for _ in range(NUM_RUNS):
             publisher = _create_mock_publisher()
@@ -232,7 +232,7 @@ async def benchmark_publish_latency(
 async def main() -> None:
     """Run all multicast benchmarks."""
     print("=" * 70)
-    print("Multicast vs WebSocket Benchmarks")
+    print("UDP Multicast vs WebSocket Benchmarks")
     print("=" * 70)
     print(f"Runs per benchmark: {NUM_RUNS} (reporting median)")
     print()
@@ -244,7 +244,7 @@ async def main() -> None:
 
     print()
     print("=" * 70)
-    print("Multicast benchmarks complete")
+    print("UDP Multicast benchmarks complete")
     print("=" * 70)
 
 
