@@ -4,6 +4,7 @@ import asyncio
 
 from delta_payload_benchmark import run_benchmark as run_delta_payload_benchmark
 from matching_engine_benchmark import main as run_matching_engine_benchmark
+from multicast_benchmark import main as run_multicast_benchmark
 from order_book_benchmark import main as run_order_book_benchmark
 from websocket_benchmark import main as run_websocket_benchmark
 
@@ -41,6 +42,13 @@ def main() -> None:
     print("=" * 80)
     print()
     asyncio.run(run_websocket_benchmark())
+    print()
+
+    print("=" * 80)
+    print("5. Multicast Benchmark (Wire Format & Publisher)")
+    print("=" * 80)
+    print()
+    asyncio.run(run_multicast_benchmark())
     print()
 
     print("=" * 80)
