@@ -16,8 +16,8 @@ class MulticastPublisher:
         Args:
             group: The multicast group address (e.g. '239.1.1.1').
             port: The destination port.
-            ttl: Time-to-live for multicast packets. 1 means
-                local network only.
+            ttl: Time-to-live for multicast packets. 1 means local network
+                only.
         """
         self.group = group
         self.port = port
