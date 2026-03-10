@@ -1,5 +1,7 @@
 from unittest.mock import MagicMock, patch
 
+import pytest
+
 from order_book_simulator.multicast.multicast_publisher import MulticastPublisher
 from order_book_simulator.multicast.wire_format import (
     DELTA,
@@ -50,14 +52,15 @@ def test_send_heartbeat(mock_socket_cls):
     assert payload == b""
 
 
+@pytest.mark.asyncio
 @patch("order_book_simulator.multicast.multicast_publisher.socket.socket")
-def test_close(mock_socket_cls):
+async def test_close(mock_socket_cls):
     """Tests that close shuts down the socket."""
     mock_sock = MagicMock()
     mock_socket_cls.return_value = mock_sock
 
     publisher = MulticastPublisher(GROUP, PORT)
-    publisher.close()
+    await publisher.close()
 
     mock_sock.close.assert_called_once()
 
