@@ -1,9 +1,9 @@
 import asyncio
-import orjson
 import logging
 import time
 from uuid import UUID
 
+import orjson
 from aiokafka import AIOKafkaConsumer
 
 from order_book_simulator.database.connection import AsyncSessionLocal

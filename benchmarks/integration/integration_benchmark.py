@@ -21,14 +21,12 @@ from typing import Any
 from uuid import UUID, uuid4
 
 from aiokafka import AIOKafkaProducer
-
-from order_book_simulator.common.models import OrderSide, OrderType
-from order_book_simulator.matching.matching_engine import MatchingEngine
-
 from redis.asyncio import Redis
 
 from order_book_simulator.common.cache import order_book_cache
+from order_book_simulator.common.models import OrderSide, OrderType
 from order_book_simulator.market_data.analytics import MarketDataAnalytics
+from order_book_simulator.matching.matching_engine import MatchingEngine
 
 
 def create_order(
