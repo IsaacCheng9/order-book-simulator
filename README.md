@@ -40,6 +40,11 @@ and full REST API access via FastAPI.
 - **Real-time market data via WebSocket streaming** – server-push delta fan-out
   at 2.7M msg/s with per-client backpressure, sequence-based reconnect recovery,
   and 86% bandwidth reduction over snapshot polling
+- **UDP multicast market data feed** – O(1) fan-out with binary wire format,
+  sequence gap detection, and deterministic recovery via HTTP delta catchup or
+  full snapshot fallback, mirroring the architecture used by real exchanges
+  (e.g. CME MDP, Nasdaq ITCH) to ensure fair, simultaneous delivery to all
+  participants
 - **Delta publishing** – sequence-based incremental order book updates with
   bounded buffer and snapshot fallback
 - **Advanced analytics** – VWAP calculations, trade metrics, market activity
@@ -161,6 +166,9 @@ uv run python benchmarks/unit/delta_payload_benchmark.py
 # Benchmark WebSocket fan-out throughput and push latency.
 uv run python benchmarks/unit/websocket_benchmark.py
 
+# Benchmark UDP multicast vs WebSocket fan-out scaling.
+uv run python benchmarks/unit/multicast_benchmark.py
+
 # Run all unit benchmarks together.
 uv run python benchmarks/unit/run_all_benchmarks.py
 ```
@@ -201,6 +209,26 @@ Push latency vs polling comparison (single subscriber):
 
 Delta streaming achieves an **86.1% bandwidth reduction** over snapshot polling
 (269 bytes vs 1,938 bytes average per update).
+
+##### UDP Multicast vs WebSocket Benchmark Results
+
+Publisher-side cost per broadcast comparing UDP multicast (single `sendto`) vs
+WebSocket (N `put_nowait` enqueues):
+
+| Subscribers | UDP Multicast (μs/msg) | WebSocket (μs/msg) | Ratio |
+| ----------: | ---------------------: | -----------------: | ----: |
+|           1 |                   12.6 |                0.5 | 0.04x |
+|          10 |                   15.5 |                3.7 | 0.24x |
+|          50 |                   13.7 |               18.1 | 1.32x |
+|         100 |                   14.1 |               35.9 | 2.55x |
+|         500 |                   15.6 |              192.1 | 12.3x |
+|       1,000 |                    9.0 |              400.8 | 44.6x |
+
+UDP multicast publisher cost stays flat at ~14 μs regardless of subscriber
+count, while WebSocket scales linearly. At 1,000 subscribers, UDP multicast is
+**~45x cheaper** per broadcast. End-to-end publish latency (order book operation
+to deliver) shows the same O(1) vs O(N) pattern, with UDP multicast holding
+steady at ~22 μs p50 while WebSocket reaches 382 μs at 1,000 subscribers.
 
 #### Integration Benchmarks (Requires Docker Compose)
 
