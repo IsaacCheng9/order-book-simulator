@@ -15,7 +15,10 @@ from order_book_simulator.gateway.routers import (
     order_book_router,
     ws_router,
 )
-from order_book_simulator.gateway.ws_manager import redis_pubsub_delta_subscriber
+from order_book_simulator.gateway.ws_manager import (
+    redis_pubsub_delta_subscriber,
+    ws_manager,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -41,6 +44,7 @@ async def lifespan(app: FastAPI):
         logger.error(f"Error during startup: {e}")
         raise
     finally:
+        await ws_manager.close_all()
         # Cancel the Redis Pub/Sub subscriber task.
         if app_state.redis_subscriber_task:
             app_state.redis_subscriber_task.cancel()
