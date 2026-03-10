@@ -1,3 +1,4 @@
+import asyncio
 import socket
 import struct
 from order_book_simulator.multicast.wire_format import encode, DELTA, HEARTBEAT
@@ -26,6 +27,23 @@ class MulticastPublisher:
         self.socket.setsockopt(
             socket.IPPROTO_IP, socket.IP_MULTICAST_TTL, struct.pack("b", ttl)
         )
+        self._stop_event: asyncio.Event = asyncio.Event()
+        self._heartbeat_task: asyncio.Task[None] | None = None
+
+    async def _heartbeat_loop(self, interval_seconds: float) -> None:
+        while not self._stop_event.is_set():
+            # Send a heartbeat with sequence number 0 as heartbeats carry no
+            # data, meaning they don't need real sequence numbers.
+            self.send_heartbeat(0)
+            try:
+                await asyncio.wait_for(
+                    self._stop_event.wait(),
+                    timeout=interval_seconds,
+                )
+                break
+            except asyncio.TimeoutError:
+                # Interval elapsed - send next heartbeat.
+                continue
 
     def send(self, sequence_number: int, payload: bytes) -> None:
         """
@@ -50,6 +68,18 @@ class MulticastPublisher:
         message = encode(HEARTBEAT, sequence_number, b"")
         self.socket.sendto(message, (self.group, self.port))
 
-    def close(self) -> None:
+    async def start_heartbeat_task(self, interval_seconds: float = 1.0) -> None:
+        self._heartbeat_task = asyncio.create_task(
+            self._heartbeat_loop(interval_seconds)
+        )
+
+    async def stop_heartbeat_task(self) -> None:
+        self._stop_event.set()
+        if self._heartbeat_task:
+            await self._heartbeat_task
+            self._heartbeat_task = None
+
+    async def close(self) -> None:
         """Closes the UDP socket."""
+        await self.stop_heartbeat_task()
         self.socket.close()
