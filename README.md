@@ -37,8 +37,9 @@ and full REST API access via FastAPI.
 
 - **Order matching engine** – price-time priority matching for limit and market
   orders
-- **Real-time market data via WebSocket streaming** – server-push delta
-  fan-out with sub-20μs latency, 86% bandwidth reduction over snapshot polling
+- **Real-time market data via WebSocket streaming** – server-push delta fan-out
+  at 2.7M msg/s with per-client backpressure, sequence-based reconnect recovery,
+  and 86% bandwidth reduction over snapshot polling
 - **Delta publishing** – sequence-based incremental order book updates with
   bounded buffer and snapshot fallback
 - **Advanced analytics** – VWAP calculations, trade metrics, market activity
@@ -175,25 +176,31 @@ Fan-out throughput and push latency from order book operation to broadcast
 completion, measured with mock WebSocket connections:
 
 | Subscribers | Fan-Out (msg/s) | Push Latency p50 (μs) | Push Latency p99 (μs) |
-|------------:|----------------:|----------------------:|----------------------:|
-| 1           | 132,880         | 17.4                  | 138.9                 |
-| 10          | 81,577          | 90.3                  | 276.9                 |
-| 50          | 59,757          | 536.3                 | 9,436.6               |
-| 100         | 53,611          | 1,132.5               | 10,098.0              |
+| ----------: | --------------: | --------------------: | --------------------: |
+|           1 |       2,103,421 |                  10.1 |                  31.5 |
+|          10 |       2,689,678 |                  13.2 |                  26.5 |
+|          50 |       2,775,645 |                  27.9 |                  52.3 |
+|         100 |       2,753,206 |                  45.9 |                  61.6 |
+|         500 |       2,694,437 |                 191.3 |                 246.1 |
+|       1,000 |       2,714,265 |                 374.0 |                 516.0 |
+
+Throughput stays flat at ~2.7M msg/s thanks to non-blocking `put_nowait` on
+per-client bounded queues. Slow consumers get messages dropped instead of
+blocking broadcast to other clients.
 
 Push latency vs polling comparison (single subscriber):
 
 | Polling Interval | Avg Polling Latency | WebSocket Speedup |
-|-----------------:|--------------------:|------------------:|
-| 1ms              | 0.5ms               | 30x               |
-| 10ms             | 5.0ms               | 296x              |
-| 50ms             | 25.0ms              | 1,481x            |
-| 100ms            | 50.0ms              | 2,963x            |
-| 500ms            | 250.0ms             | 14,815x           |
-| 1,000ms          | 500.0ms             | 29,630x           |
+| ---------------: | ------------------: | ----------------: |
+|              1ms |               0.5ms |               51x |
+|             10ms |               5.0ms |              513x |
+|             50ms |              25.0ms |            2,564x |
+|            100ms |              50.0ms |            5,128x |
+|            500ms |             250.0ms |           25,641x |
+|          1,000ms |             500.0ms |           51,282x |
 
-Delta streaming achieves an **86.1% bandwidth reduction** over snapshot
-polling (269 bytes vs 1,938 bytes average per update).
+Delta streaming achieves an **86.1% bandwidth reduction** over snapshot polling
+(269 bytes vs 1,938 bytes average per update).
 
 #### Integration Benchmarks (Requires Docker Compose)
 
