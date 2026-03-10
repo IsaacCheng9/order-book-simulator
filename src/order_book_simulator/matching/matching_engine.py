@@ -1,14 +1,17 @@
-import orjson
+from dataclasses import asdict
 from datetime import datetime, timezone
 from decimal import Decimal
 from typing import Any
 from uuid import UUID
 
+import orjson
 from aiokafka import AIOKafkaProducer
 
 from order_book_simulator.common.cache import order_book_cache
+from order_book_simulator.common.models import Delta
 from order_book_simulator.market_data.analytics import MarketDataAnalytics
 from order_book_simulator.matching.order_book import OrderBook
+from order_book_simulator.multicast.multicast_publisher import MulticastPublisher
 
 
 class MatchingEngine:
@@ -20,6 +23,7 @@ class MatchingEngine:
         self,
         kafka_producer: AIOKafkaProducer,
         analytics: MarketDataAnalytics,
+        multicast_publisher: MulticastPublisher | None = None,
     ):
         """
         Creates a new matching engine to coordinate between order books and
@@ -29,10 +33,26 @@ class MatchingEngine:
             kafka_producer: The Kafka producer to use for publishing market
                             data.
             analytics: The analytics service to record market data.
+            multicast_publisher: The multicast publisher to use for publishing
+                delta messages.
         """
         self.order_books: dict[UUID, OrderBook] = {}
-        self.producer = kafka_producer
-        self.analytics = analytics
+        self.producer: AIOKafkaProducer = kafka_producer
+        self.analytics: MarketDataAnalytics = analytics
+        self.multicast_publisher: MulticastPublisher | None = multicast_publisher
+
+    def _publish_deltas_to_multicast(self, deltas: list[Delta]) -> None:
+        """
+        Publishes the deltas to the multicast group.
+
+        Args:
+            deltas: The list of deltas to publish.
+        """
+        if self.multicast_publisher:
+            for delta in deltas:
+                self.multicast_publisher.send(
+                    delta.sequence_number, orjson.dumps(asdict(delta), default=str)
+                )
 
     async def _publish_market_data(
         self,
@@ -114,6 +134,7 @@ class MatchingEngine:
         if deltas:
             await order_book_cache.store_deltas(stock_id, deltas)
             await order_book_cache.publish_deltas(cancel_message["ticker"], deltas)
+            self._publish_deltas_to_multicast(deltas)
 
         # Publish market data update.
         await self._publish_market_data(
@@ -150,6 +171,7 @@ class MatchingEngine:
         if deltas:
             await order_book_cache.store_deltas(stock_id, deltas)
             await order_book_cache.publish_deltas(ticker, deltas)
+            self._publish_deltas_to_multicast(deltas)
 
         # Always publish market data updates, even if no trades occurred.
         await self._publish_market_data(stock_id, ticker, order_book, trades or [])
