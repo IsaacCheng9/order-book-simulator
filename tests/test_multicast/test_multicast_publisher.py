@@ -1,6 +1,6 @@
 from unittest.mock import MagicMock, patch
 
-from order_book_simulator.multicast.publisher import MulticastPublisher
+from order_book_simulator.multicast.multicast_publisher import MulticastPublisher
 from order_book_simulator.multicast.wire_format import (
     DELTA,
     HEARTBEAT,
@@ -11,7 +11,7 @@ GROUP = "239.1.1.1"
 PORT = 5555
 
 
-@patch("order_book_simulator.multicast.publisher.socket.socket")
+@patch("order_book_simulator.multicast.multicast_publisher.socket.socket")
 def test_send_delta(mock_socket_cls):
     """Tests that send encodes a delta and sends to the multicast group."""
     mock_sock = MagicMock()
@@ -31,7 +31,7 @@ def test_send_delta(mock_socket_cls):
     assert decoded_payload == payload
 
 
-@patch("order_book_simulator.multicast.publisher.socket.socket")
+@patch("order_book_simulator.multicast.multicast_publisher.socket.socket")
 def test_send_heartbeat(mock_socket_cls):
     """Tests that send_heartbeat sends a heartbeat with empty payload."""
     mock_sock = MagicMock()
@@ -50,7 +50,7 @@ def test_send_heartbeat(mock_socket_cls):
     assert payload == b""
 
 
-@patch("order_book_simulator.multicast.publisher.socket.socket")
+@patch("order_book_simulator.multicast.multicast_publisher.socket.socket")
 def test_close(mock_socket_cls):
     """Tests that close shuts down the socket."""
     mock_sock = MagicMock()
@@ -62,7 +62,7 @@ def test_close(mock_socket_cls):
     mock_sock.close.assert_called_once()
 
 
-@patch("order_book_simulator.multicast.publisher.socket.socket")
+@patch("order_book_simulator.multicast.multicast_publisher.socket.socket")
 def test_socket_configured_with_multicast_ttl(mock_socket_cls):
     """Tests that the socket is configured with the correct TTL."""
     mock_sock = MagicMock()
@@ -73,7 +73,7 @@ def test_socket_configured_with_multicast_ttl(mock_socket_cls):
     mock_sock.setsockopt.assert_called_once()
 
 
-@patch("order_book_simulator.multicast.publisher.socket.socket")
+@patch("order_book_simulator.multicast.multicast_publisher.socket.socket")
 def test_multiple_sends_use_same_socket(mock_socket_cls):
     """Tests that multiple sends reuse the same socket."""
     mock_sock = MagicMock()
