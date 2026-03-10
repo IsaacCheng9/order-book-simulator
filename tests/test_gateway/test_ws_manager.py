@@ -1,8 +1,9 @@
 import asyncio
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
+from order_book_simulator.gateway import ws_manager as ws_manager_module
 from order_book_simulator.gateway.ws_manager import (
     ClientConnection,
     WebSocketConnectionManager,
@@ -15,6 +16,16 @@ def manager():
     return WebSocketConnectionManager()
 
 
+@pytest.fixture
+def mock_client_cls(monkeypatch):
+    """Patches ClientConnection to prevent real task creation."""
+    mock_cls = MagicMock()
+    # Ensure instances have an awaitable close method.
+    mock_cls.return_value.close = AsyncMock()
+    monkeypatch.setattr(ws_manager_module, "ClientConnection", mock_cls)
+    return mock_cls
+
+
 def _mock_ws() -> AsyncMock:
     """Creates a mock WebSocket with an async send_json."""
     ws = AsyncMock()
@@ -25,10 +36,6 @@ def _mock_ws() -> AsyncMock:
 # --- Subscribe / unsubscribe / count ---
 
 
-@patch(
-    "order_book_simulator.gateway.ws_manager.ClientConnection",
-    autospec=True,
-)
 def test_subscribe_adds_connection(mock_client_cls, manager):
     """Tests that subscribing adds the connection to the ticker."""
     ws = MagicMock()
@@ -37,10 +44,6 @@ def test_subscribe_adds_connection(mock_client_cls, manager):
     assert manager.get_connection_count("AAPL") == 1
 
 
-@patch(
-    "order_book_simulator.gateway.ws_manager.ClientConnection",
-    autospec=True,
-)
 def test_subscribe_multiple_connections(mock_client_cls, manager):
     """Tests subscribing multiple connections to the same ticker."""
     ws1 = MagicMock()
@@ -51,10 +54,6 @@ def test_subscribe_multiple_connections(mock_client_cls, manager):
     assert manager.get_connection_count("AAPL") == 2
 
 
-@patch(
-    "order_book_simulator.gateway.ws_manager.ClientConnection",
-    autospec=True,
-)
 def test_subscribe_different_tickers(mock_client_cls, manager):
     """Tests subscribing to different tickers independently."""
     ws1 = MagicMock()
@@ -67,10 +66,6 @@ def test_subscribe_different_tickers(mock_client_cls, manager):
 
 
 @pytest.mark.asyncio
-@patch(
-    "order_book_simulator.gateway.ws_manager.ClientConnection",
-    autospec=True,
-)
 async def test_unsubscribe_removes_connection(mock_client_cls, manager):
     """Tests that unsubscribing removes the connection."""
     ws = MagicMock()
@@ -81,10 +76,6 @@ async def test_unsubscribe_removes_connection(mock_client_cls, manager):
 
 
 @pytest.mark.asyncio
-@patch(
-    "order_book_simulator.gateway.ws_manager.ClientConnection",
-    autospec=True,
-)
 async def test_unsubscribe_cleans_up_empty_ticker(mock_client_cls, manager):
     """Tests that empty ticker entries are removed from the dict."""
     ws = MagicMock()
@@ -95,10 +86,6 @@ async def test_unsubscribe_cleans_up_empty_ticker(mock_client_cls, manager):
 
 
 @pytest.mark.asyncio
-@patch(
-    "order_book_simulator.gateway.ws_manager.ClientConnection",
-    autospec=True,
-)
 async def test_unsubscribe_preserves_other_connections(mock_client_cls, manager):
     """Tests that unsubscribing one connection doesn't affect others."""
     ws1 = MagicMock()
@@ -111,10 +98,6 @@ async def test_unsubscribe_preserves_other_connections(mock_client_cls, manager)
 
 
 @pytest.mark.asyncio
-@patch(
-    "order_book_simulator.gateway.ws_manager.ClientConnection",
-    autospec=True,
-)
 async def test_unsubscribe_cancels_sender_task(mock_client_cls, manager):
     """Tests that unsubscribing cancels the client's sender task."""
     ws = MagicMock()
