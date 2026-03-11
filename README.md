@@ -8,31 +8,6 @@ interactive dashboard, built in Python. Features price-time priority matching,
 automated trade execution, real-time market data processing, advanced analytics,
 and full REST API access via FastAPI.
 
-## Screenshots
-
-![Market Overview](./screenshots/market_overview.png)
-![Individual Order Book](./screenshots/individual_order_book.png)
-![Trade History (All Stocks)](./screenshots/trade_history_all_stocks.png)
-![Submit Limit Order](./screenshots/submit_limit_order.png)
-
-<!-- markdownlint-disable-next-line MD033 -->
-<details>
-<!-- markdownlint-disable-next-line MD033 -->
-<summary>Trade History (Single Stock)</summary>
-
-![Trade History (Single Stock)](./screenshots/trade_history_single_stock.png)
-
-</details>
-
-<!-- markdownlint-disable-next-line MD033 -->
-<details>
-<!-- markdownlint-disable-next-line MD033 -->
-<summary>Submit Market Order</summary>
-
-![Submit Market Order](./screenshots/submit_market_order.png)
-
-</details>
-
 ## Key Features
 
 - **Order matching engine** – price-time priority matching for limit and market
@@ -59,6 +34,31 @@ and full REST API access via FastAPI.
   messaging for real-time processing
 - **Containerised deployment** – easy deployment and local development via
   Docker Compose
+
+## Screenshots
+
+![Market Overview](./screenshots/market_overview.png)
+![Individual Order Book](./screenshots/individual_order_book.png)
+![Trade History (All Stocks)](./screenshots/trade_history_all_stocks.png)
+![Submit Limit Order](./screenshots/submit_limit_order.png)
+
+<!-- markdownlint-disable-next-line MD033 -->
+<details>
+<!-- markdownlint-disable-next-line MD033 -->
+<summary>Trade History (Single Stock)</summary>
+
+![Trade History (Single Stock)](./screenshots/trade_history_single_stock.png)
+
+</details>
+
+<!-- markdownlint-disable-next-line MD033 -->
+<details>
+<!-- markdownlint-disable-next-line MD033 -->
+<summary>Submit Market Order</summary>
+
+![Submit Market Order](./screenshots/submit_market_order.png)
+
+</details>
 
 ## Components
 
@@ -215,20 +215,37 @@ Delta streaming achieves an **86.1% bandwidth reduction** over snapshot polling
 Publisher-side cost per broadcast comparing UDP multicast (single `sendto`) vs
 WebSocket (N `put_nowait` enqueues):
 
-| Subscribers | UDP Multicast (μs/msg) | WebSocket (μs/msg) | Ratio |
-| ----------: | ---------------------: | -----------------: | ----: |
-|           1 |                   12.6 |                0.5 | 0.04x |
-|          10 |                   15.5 |                3.7 | 0.24x |
-|          50 |                   13.7 |               18.1 | 1.32x |
-|         100 |                   14.1 |               35.9 | 2.55x |
-|         500 |                   15.6 |              192.1 | 12.3x |
-|       1,000 |                    9.0 |              400.8 | 44.6x |
+| Subscribers | UDP Multicast (μs/msg) | WebSocket (μs/msg) |  Ratio |
+| ----------: | ---------------------: | -----------------: | -----: |
+|           1 |                   15.4 |                0.5 |  0.03x |
+|          10 |                   17.4 |                3.8 |  0.22x |
+|          50 |                   16.4 |               18.3 |  1.12x |
+|         100 |                   15.0 |               37.6 |  2.51x |
+|         500 |                   17.0 |              190.9 | 11.22x |
+|       1,000 |                    8.9 |              414.5 | 46.44x |
+|       5,000 |                    9.1 |            2,396.9 | 264.6x |
+|      10,000 |                   12.4 |            5,447.5 | 440.4x |
 
-UDP multicast publisher cost stays flat at ~14 μs regardless of subscriber
-count, while WebSocket scales linearly. At 1,000 subscribers, UDP multicast is
-**~45x cheaper** per broadcast. End-to-end publish latency (order book operation
-to deliver) shows the same O(1) vs O(N) pattern, with UDP multicast holding
-steady at ~22 μs p50 while WebSocket reaches 382 μs at 1,000 subscribers.
+UDP multicast publisher cost stays flat at ~12-17 μs regardless of subscriber
+count, while WebSocket scales linearly. At 10,000 subscribers, UDP multicast is
+**~440x cheaper** per broadcast.
+
+End-to-end publish latency (order book operation to deliver) shows the same O(1)
+vs O(N) pattern:
+
+| Subscribers | UDP Multicast p50 (μs) | WebSocket p50 (μs) |  Ratio |
+| ----------: | ---------------------: | -----------------: | -----: |
+|           1 |                   23.1 |               13.0 |  0.57x |
+|          10 |                   22.3 |               16.4 |  0.74x |
+|          50 |                   22.6 |               31.7 |  1.40x |
+|         100 |                   21.6 |               50.2 |  2.32x |
+|         500 |                   22.5 |              200.2 |  8.91x |
+|       1,000 |                   21.2 |              382.3 | 18.03x |
+|       5,000 |                   22.5 |            2,147.7 | 95.63x |
+|      10,000 |                   22.3 |            4,785.3 | 214.3x |
+
+UDP multicast holds steady at ~22 μs p50 while WebSocket reaches 4,785 μs at
+10,000 subscribers.
 
 #### Integration Benchmarks (Requires Docker Compose)
 

@@ -237,7 +237,15 @@ async def main() -> None:
     print(f"Runs per benchmark: {NUM_RUNS} (reporting median)")
     print()
 
-    subscriber_counts = [1, 10, 50, 100, 500, 1_000]
+    # !IMPORTANT: Takes a long run time to complete for larger subscriber counts.
+    subscriber_counts: list[int] = [
+        1,
+        10,
+        50,
+        100,
+        500,
+        1_000,
+    ]
 
     await benchmark_fan_out_scaling(subscriber_counts)
     await benchmark_publish_latency(subscriber_counts)
