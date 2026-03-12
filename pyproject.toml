@@ -56,8 +56,8 @@ version_files = [
     "pyproject.toml:version",
     "pyproject.toml:tool.commitizen.version",
 ]
-bump_map = { refactor = "PATCH", perf = "PATCH", build = "PATCH", ci = "PATCH", docs = "PATCH", style = "PATCH", test = "PATCH", chore = "PATCH" }
-bump_pattern = "^(feat|fix|refactor|perf|build|ci|docs|style|test|chore)"
+bump_map = { feat = "MINOR", fix = "PATCH", refactor = "PATCH", perf = "PATCH", build = "PATCH", ci = "PATCH", docs = "PATCH", style = "PATCH", test = "PATCH", chore = "PATCH", "BREAKING CHANGE" = "MAJOR" }
+bump_pattern = "^(feat|fix|refactor|perf|build|ci|docs|style|test|chore|BREAKING CHANGE)"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/order_book_simulator"]
