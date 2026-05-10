@@ -1,5 +1,5 @@
 version = 1
-revision = 3
+revision = 2
 requires-python = ">=3.14"
 
 [[package]]
@@ -619,7 +619,6 @@ dependencies = [
     { name = "streamlit" },
     { name = "uvicorn" },
     { name = "uvloop" },
-    { name = "watchdog" },
 ]
 
 [package.dev-dependencies]
@@ -652,7 +651,6 @@ requires-dist = [
     { name = "streamlit", specifier = ">=1.46.1" },
     { name = "uvicorn", specifier = ">=0.34.0" },
     { name = "uvloop", specifier = ">=0.21.0" },
-    { name = "watchdog", specifier = ">=6.0.0" },
 ]
 
 [package.metadata.requires-dev]
