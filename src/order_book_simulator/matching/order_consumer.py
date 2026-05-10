@@ -12,6 +12,18 @@ from order_book_simulator.multicast.multicast_publisher import MulticastPublishe
 
 logger = logging.getLogger(__name__)
 
+# Exceptions that indicate the message itself is malformed or unknown.
+# These are skipped with structured context - retrying won't help.
+# Anything outside this tuple is treated as a bug or infrastructure
+# failure and is allowed to propagate, crashing the consumer so the
+# supervisor restarts it rather than silently processing bad state.
+RECOVERABLE_ERRORS = (
+    orjson.JSONDecodeError,
+    KeyError,
+    ValueError,
+    TypeError,
+)
+
 
 class OrderConsumer:
     """Processes incoming orders from Kafka and routes them to the matching engine."""
@@ -54,15 +66,19 @@ class OrderConsumer:
         """
         Processes a single message from Kafka.
 
+        Malformed or unknown messages are logged with full context and
+        skipped. Unexpected errors propagate so the consumer crashes
+        rather than processing bad state silently.
+
         Args:
             message: The message received from Kafka.
         """
+        order_id: str | None = None
         try:
             if message.value is None:
                 return
             order_data = orjson.loads(message.value)
 
-            # Skip health check messages
             match order_data.get("type"):
                 case "health_check":
                     return
@@ -100,9 +116,46 @@ class OrderConsumer:
                         f"total_latency={total_latency:.2f}ms"
                     )
                 case _:
-                    raise ValueError(f"Unknown order type: {order_data.get('type')}")
-        except Exception as e:
-            logger.error(f"Error processing message: {e}")
+                    raise ValueError(f"Unknown order type: {order_data.get('type')!r}")
+        except RECOVERABLE_ERRORS as e:
+            self._log_skipped_message(message, e, order_id)
+
+    def _log_skipped_message(
+        self,
+        message: ConsumerRecord,
+        error: Exception,
+        order_id: str | None,
+    ) -> None:
+        """
+        Logs a malformed Kafka message with the full context needed
+        to debug or replay it.
+
+        Args:
+            message: The Kafka message that failed to process.
+            error: The recoverable exception raised while processing.
+            order_id: The parsed order ID if available, else None.
+        """
+        # Truncate the payload to keep log lines bounded; replace bad
+        # bytes so a broken UTF-8 payload still logs cleanly.
+        payload_repr = (
+            message.value[:500].decode("utf-8", errors="replace")
+            if message.value
+            else None
+        )
+        key_repr = (
+            message.key.decode("utf-8", errors="replace") if message.key else None
+        )
+        logger.error(
+            "Skipping malformed Kafka message: "
+            f"error_type={type(error).__name__}, "
+            f"error={error!s}, "
+            f"topic={message.topic}, "
+            f"partition={message.partition}, "
+            f"offset={message.offset}, "
+            f"key={key_repr!r}, "
+            f"order_id={order_id!r}, "
+            f"payload={payload_repr!r}"
+        )
 
     async def start(self) -> None:
         """Starts consuming order messages with retry logic."""
@@ -112,6 +165,10 @@ class OrderConsumer:
             group_id=self.group_id,
             session_timeout_ms=self.session_timeout_ms,
             heartbeat_interval_ms=self.heartbeat_interval_ms,
+            # Disable auto-commit so offsets only advance after a
+            # message is handled (or deliberately skipped). Prevents
+            # silent data loss when processing raises.
+            enable_auto_commit=False,
         )
 
         for attempt in range(self.max_retries):
@@ -138,6 +195,10 @@ class OrderConsumer:
         try:
             async for message in self.consumer:
                 await self._process_message(message)
+                # Commit only after _process_message returns. Unexpected
+                # exceptions skip this and bubble up, so the message is
+                # reprocessed after the consumer restarts.
+                await self.consumer.commit()
         except Exception as e:
             logger.error(f"Error consuming messages: {str(e)}")
             raise
