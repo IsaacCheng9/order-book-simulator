@@ -4,6 +4,7 @@ from typing import Any
 from unittest.mock import AsyncMock
 from uuid import UUID, uuid4
 
+import orjson
 import pytest
 
 from order_book_simulator.common.models import OrderSide, OrderType
@@ -38,7 +39,10 @@ async def test_creates_order_book_for_new_stock(matching_engine: MatchingEngine)
 async def test_publishes_market_data_on_trade(
     matching_engine: MatchingEngine, mock_kafka_producer: AsyncMock
 ):
-    """Tests that market data updates are published when trades occur."""
+    """
+    Tests that market data publishes carry the correct topic, snapshot,
+    and trade payload after a resting order is matched.
+    """
     stock_id = uuid4()
 
     # Add a sell order.
@@ -49,8 +53,37 @@ async def test_publishes_market_data_on_trade(
     buy_order = create_order(stock_id)
     await matching_engine.process_order(buy_order)
 
-    # We expect Kafka send_and_wait to be called for each order processed.
-    assert mock_kafka_producer.send_and_wait.call_count == 2
+    calls = mock_kafka_producer.send_and_wait.call_args_list
+    assert len(calls) == 2
+
+    # First publish - sell rests on the book, no trades.
+    first_topic, first_bytes = calls[0].args
+    assert first_topic == "market-data"
+    first_payload = orjson.loads(first_bytes)
+    assert first_payload["stock_id"] == str(stock_id)
+    assert first_payload["ticker"] == "TICKER"
+    assert first_payload["bids"] == []
+    assert first_payload["asks"] == [
+        {"price": "100", "quantity": "10", "order_count": 1}
+    ]
+    assert first_payload["trades"] == []
+
+    # Second publish - buy lifts the offer, book empties, trade reported.
+    second_topic, second_bytes = calls[1].args
+    assert second_topic == "market-data"
+    second_payload = orjson.loads(second_bytes)
+    assert second_payload["stock_id"] == str(stock_id)
+    assert second_payload["ticker"] == "TICKER"
+    assert second_payload["bids"] == []
+    assert second_payload["asks"] == []
+    assert len(second_payload["trades"]) == 1
+    trade = second_payload["trades"][0]
+    assert trade["price"] == "100"
+    assert trade["quantity"] == "10"
+    assert trade["stock_id"] == str(stock_id)
+    assert trade["buyer_order_id"] == str(buy_order["id"])
+    assert trade["seller_order_id"] == str(sell_order["id"])
+    assert "timestamp" in trade
 
 
 @pytest.mark.asyncio
