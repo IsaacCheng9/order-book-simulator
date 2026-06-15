@@ -165,6 +165,62 @@ def test_market_order_with_price_raises_error(order_book: OrderBook) -> None:
         order_book.add_order(market_buy)
 
 
+def test_market_order_with_price_raises_on_empty_book(order_book: OrderBook) -> None:
+    """Tests that invalid market orders are rejected before liquidity checks."""
+    market_buy = create_order(
+        price=Decimal("100"),
+        quantity=Decimal("5"),
+        order_type=OrderType.MARKET,
+    )
+
+    with pytest.raises(ValueError, match="Market orders should not have a price"):
+        order_book.add_order(market_buy)
+
+
+def test_stop_order_raises_error(order_book: OrderBook) -> None:
+    """Tests that unsupported stop orders are rejected."""
+    stop_order = create_order(
+        price=Decimal("100"),
+        quantity=Decimal("5"),
+        order_type=OrderType.STOP,
+    )
+
+    with pytest.raises(ValueError, match="STOP orders are not supported"):
+        order_book.add_order(stop_order)
+
+
+def test_limit_order_without_price_raises_error(order_book: OrderBook) -> None:
+    """Tests that limit orders must provide a price."""
+    order = create_order(price=None, quantity=Decimal("5"))
+
+    with pytest.raises(ValueError, match="Limit orders must have a price"):
+        order_book.add_order(order)
+
+
+@pytest.mark.parametrize("price", [Decimal("0"), Decimal("-1")])
+def test_limit_order_with_non_positive_price_raises_error(
+    order_book: OrderBook,
+    price: Decimal,
+) -> None:
+    """Tests that limit order prices must be positive."""
+    order = create_order(price=price, quantity=Decimal("5"))
+
+    with pytest.raises(ValueError, match="Limit order price must be positive"):
+        order_book.add_order(order)
+
+
+@pytest.mark.parametrize("quantity", [Decimal("0"), Decimal("-1")])
+def test_order_with_non_positive_quantity_raises_error(
+    order_book: OrderBook,
+    quantity: Decimal,
+) -> None:
+    """Tests that orders must have a positive quantity."""
+    order = create_order(price=Decimal("100"), quantity=quantity)
+
+    with pytest.raises(ValueError, match="Order quantity must be positive"):
+        order_book.add_order(order)
+
+
 def test_cancel_order_success(order_book: OrderBook) -> None:
     """Tests successful order cancellation."""
     order = create_order(price=Decimal("100"), quantity=Decimal("10"))
