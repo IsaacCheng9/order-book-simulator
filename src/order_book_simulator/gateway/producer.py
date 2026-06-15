@@ -150,7 +150,11 @@ class OrderProducer:
             "ticker": order_record["ticker"],
             "order_type": order_record["type"].value,
             "side": order_record["side"].value,
-            "price": str(order_record["price"]) if order_record["price"] else None,
+            "price": (
+                str(order_record["price"])
+                if order_record["price"] is not None
+                else None
+            ),
             "quantity": str(order_record["quantity"]),
             "gateway_received_at": order_record["gateway_received_at"],
         }
