@@ -20,6 +20,8 @@ class OrderBook:
     Manages the limit order book for a single stock.
     """
 
+    SUPPORTED_ORDER_TYPES = frozenset({OrderType.LIMIT, OrderType.MARKET})
+
     def __init__(self, stock_id: UUID, ticker: str):
         self.stock_id: UUID = stock_id
         self.ticker: str = ticker
@@ -47,23 +49,11 @@ class OrderBook:
         Returns:
             A list of fills from matching the order.
         """
+        trades: list[FilledOrder] = []
+
         # Exit early if there are no opposing levels to match against.
         if not opposing_levels:
             return []
-
-        trades: list[FilledOrder] = []
-
-        # Only limit orders should have a price.
-        if (
-            incoming_order.order_type == OrderType.MARKET
-            and incoming_order.price is not None
-        ):
-            raise ValueError("Market orders should not have a price.")
-        if (
-            incoming_order.order_type == OrderType.LIMIT
-            and incoming_order.price is None
-        ):
-            raise ValueError("Limit orders must have a price.")
 
         # Track the price levels that need to be removed after matching.
         levels_to_remove: list[Decimal] = []
@@ -73,7 +63,7 @@ class OrderBook:
                 break
 
             # Check if the price level can match.
-            if incoming_order.price:
+            if incoming_order.price is not None:
                 if is_buy and price > incoming_order.price:
                     break
                 if not is_buy and price < incoming_order.price:
@@ -157,6 +147,40 @@ class OrderBook:
 
         return trades
 
+    def _validate_order(
+        self,
+        order_type: OrderType,
+        quantity: Decimal,
+        price: Decimal | None,
+    ) -> None:
+        """
+        Validates order semantics before the order can mutate the book.
+
+        Args:
+            order_type: The order type to validate.
+            quantity: The requested quantity.
+            price: The optional limit price.
+
+        Raises:
+            ValueError: If the order cannot be handled by the matching engine.
+        """
+        if order_type not in self.SUPPORTED_ORDER_TYPES:
+            raise ValueError(f"{order_type.value} orders are not supported.")
+
+        if not quantity.is_finite() or quantity <= Decimal("0"):
+            raise ValueError("Order quantity must be positive.")
+
+        if order_type == OrderType.MARKET:
+            if price is not None:
+                raise ValueError("Market orders should not have a price.")
+            return
+
+        if price is None:
+            raise ValueError("Limit orders must have a price.")
+
+        if not price.is_finite() or price <= Decimal("0"):
+            raise ValueError("Limit order price must be positive.")
+
     def add_order(self, order: dict[str, Any]) -> list[dict]:
         """
         Processes an incoming order, matching it against existing orders and
@@ -178,14 +202,16 @@ class OrderBook:
             order_type = OrderType(order_type)
             order["order_type"] = order_type
         is_buy = side == OrderSide.BUY
-        price = Decimal(order["price"]) if order.get("price") is not None else None
+        price = Decimal(str(order["price"])) if order.get("price") is not None else None
+        quantity = Decimal(str(order["quantity"]))
+        self._validate_order(order_type, quantity, price)
 
         # Create an OrderBookEntry from the incoming order dict.
         incoming_order = OrderBookEntry(
             id=order["id"],
             order_type=order_type,
             side=side,
-            quantity=Decimal(order["quantity"]),
+            quantity=quantity,
             price=price,
             entry_time=int(order["created_at"].timestamp() * 1_000_000),
         )
@@ -199,7 +225,7 @@ class OrderBook:
         # If it's a limit order and there's remaining quantity, add it to the
         # book.
         if order_type == OrderType.LIMIT and incoming_order.quantity > 0:
-            if not price:
+            if price is None:
                 raise ValueError("Limit orders must have a price.")
 
             price_levels = self.bid_levels if is_buy else self.ask_levels
@@ -250,7 +276,7 @@ class OrderBook:
         levels: SortedDict[Decimal, PriceLevel] = (
             self.bid_levels if order.side == OrderSide.BUY else self.ask_levels
         )
-        if order.price and order.price in levels:
+        if order.price is not None and order.price in levels:
             price_level: PriceLevel = levels[order.price]
             if order_id in price_level.orders:
                 del price_level.orders[order_id]
