@@ -1,5 +1,5 @@
 from datetime import datetime, timezone
-from typing import cast
+from typing import Any, ClassVar, cast
 from unittest.mock import AsyncMock
 from uuid import uuid4
 
@@ -7,8 +7,43 @@ import orjson
 import pytest
 from aiokafka import ConsumerRecord
 
+from order_book_simulator.matching import order_consumer as order_consumer_module
 from order_book_simulator.matching.matching_engine import MatchingEngine
 from order_book_simulator.matching.order_consumer import OrderConsumer
+
+
+class FakeKafkaConsumer:
+    """Provide an async iterable Kafka consumer for start-loop tests."""
+
+    queued_messages: ClassVar[list[ConsumerRecord]] = []
+    last_instance: ClassVar["FakeKafkaConsumer | None"] = None
+
+    def __init__(self, *args: Any, **kwargs: Any) -> None:
+        self.messages = list(self.__class__.queued_messages)
+        self.commit_count = 0
+        self.started = False
+        self.stopped = False
+        FakeKafkaConsumer.last_instance = self
+
+    async def start(self) -> None:
+        """Record that the fake consumer was started."""
+        self.started = True
+
+    async def stop(self) -> None:
+        """Record that the fake consumer was stopped."""
+        self.stopped = True
+
+    async def commit(self) -> None:
+        """Record an offset commit."""
+        self.commit_count += 1
+
+    def __aiter__(self) -> "FakeKafkaConsumer":
+        return self
+
+    async def __anext__(self) -> ConsumerRecord:
+        if not self.messages:
+            raise StopAsyncIteration
+        return self.messages.pop(0)
 
 
 def make_record(value: bytes | None, key: bytes | None = None) -> ConsumerRecord:
@@ -38,6 +73,23 @@ def engine() -> AsyncMock:
 def consumer(engine: AsyncMock) -> OrderConsumer:
     """Creates an OrderConsumer wired to the mocked matching engine."""
     return OrderConsumer(matching_engine=cast(MatchingEngine, engine))
+
+
+def valid_order_payload() -> bytes:
+    """Build a well-formed order payload for consumer tests."""
+    return orjson.dumps(
+        {
+            "type": "order",
+            "id": str(uuid4()),
+            "stock_id": str(uuid4()),
+            "ticker": "AAPL",
+            "side": "BUY",
+            "order_type": "LIMIT",
+            "price": "100",
+            "quantity": "10",
+            "gateway_received_at": datetime.now(timezone.utc).isoformat(),
+        }
+    )
 
 
 @pytest.mark.asyncio
@@ -122,13 +174,13 @@ async def test_unknown_order_type_is_skipped(
     engine: AsyncMock,
     caplog: pytest.LogCaptureFixture,
 ):
-    """Tests that an unrecognised type is logged and skipped, not raised."""
+    """Tests that an unrecognised message type is logged and skipped."""
     caplog.set_level("ERROR")
     payload = orjson.dumps({"type": "definitely-not-real"})
 
     await consumer._process_message(make_record(payload))
 
-    assert "Unknown order type" in caplog.text
+    assert "Unknown message type" in caplog.text
     assert "ValueError" in caplog.text
     engine.process_order.assert_not_awaited()
 
@@ -177,6 +229,58 @@ async def test_unexpected_exception_propagates(
 
 
 @pytest.mark.asyncio
+async def test_matching_engine_value_error_propagates(
+    consumer: OrderConsumer,
+    engine: AsyncMock,
+):
+    """Test that engine ValueErrors are not treated as malformed messages."""
+    engine.process_order.side_effect = ValueError("engine invariant failed")
+
+    with pytest.raises(ValueError, match="engine invariant failed"):
+        await consumer._process_message(make_record(valid_order_payload()))
+
+
+@pytest.mark.asyncio
+async def test_matching_engine_type_error_propagates(
+    consumer: OrderConsumer,
+    engine: AsyncMock,
+):
+    """Test that engine TypeErrors are not treated as malformed messages."""
+    engine.process_order.side_effect = TypeError("engine type bug")
+
+    with pytest.raises(TypeError, match="engine type bug"):
+        await consumer._process_message(make_record(valid_order_payload()))
+
+
+@pytest.mark.asyncio
+async def test_invalid_order_schema_is_skipped_before_engine(
+    consumer: OrderConsumer,
+    engine: AsyncMock,
+    caplog: pytest.LogCaptureFixture,
+):
+    """Test that malformed order fields are skipped before engine handoff."""
+    caplog.set_level("ERROR")
+    payload = orjson.dumps(
+        {
+            "type": "order",
+            "id": str(uuid4()),
+            "stock_id": "not-a-uuid",
+            "ticker": "AAPL",
+            "side": "BUY",
+            "order_type": "LIMIT",
+            "price": "100",
+            "quantity": "10",
+            "gateway_received_at": datetime.now(timezone.utc).isoformat(),
+        }
+    )
+
+    await consumer._process_message(make_record(payload))
+
+    assert "stock_id must be a UUID" in caplog.text
+    engine.process_order.assert_not_awaited()
+
+
+@pytest.mark.asyncio
 async def test_truncates_oversized_payload_in_log(
     consumer: OrderConsumer, caplog: pytest.LogCaptureFixture
 ):
@@ -190,3 +294,50 @@ async def test_truncates_oversized_payload_in_log(
     # The truncated payload representation appears, not the full 2 KB.
     assert "payload='" in caplog.text
     assert "x" * 2049 not in caplog.text
+
+
+@pytest.mark.asyncio
+async def test_start_commits_after_skipping_malformed_message(
+    consumer: OrderConsumer,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    """Test that deliberately skipped malformed messages still commit."""
+    FakeKafkaConsumer.queued_messages = [make_record(b"not valid json{{{")]
+    FakeKafkaConsumer.last_instance = None
+    monkeypatch.setattr(
+        order_consumer_module,
+        "AIOKafkaConsumer",
+        FakeKafkaConsumer,
+    )
+
+    await consumer.start()
+
+    fake_consumer = FakeKafkaConsumer.last_instance
+    assert fake_consumer is not None
+    assert fake_consumer.commit_count == 1
+    assert fake_consumer.stopped is True
+
+
+@pytest.mark.asyncio
+async def test_start_does_not_commit_when_engine_error_propagates(
+    consumer: OrderConsumer,
+    engine: AsyncMock,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    """Test that engine failures leave the Kafka offset uncommitted."""
+    engine.process_order.side_effect = ValueError("engine invariant failed")
+    FakeKafkaConsumer.queued_messages = [make_record(valid_order_payload())]
+    FakeKafkaConsumer.last_instance = None
+    monkeypatch.setattr(
+        order_consumer_module,
+        "AIOKafkaConsumer",
+        FakeKafkaConsumer,
+    )
+
+    with pytest.raises(ValueError, match="engine invariant failed"):
+        await consumer.start()
+
+    fake_consumer = FakeKafkaConsumer.last_instance
+    assert fake_consumer is not None
+    assert fake_consumer.commit_count == 0
+    assert fake_consumer.stopped is True

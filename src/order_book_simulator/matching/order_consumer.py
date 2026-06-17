@@ -1,24 +1,27 @@
 import asyncio
 import logging
 from datetime import datetime, timezone
+from decimal import Decimal, InvalidOperation
+from typing import Any
+from uuid import UUID
 
 import orjson
 from aiokafka import AIOKafkaConsumer, AIOKafkaProducer, ConsumerRecord
 from redis.asyncio import Redis
 
+from order_book_simulator.common.models import OrderSide, OrderType
 from order_book_simulator.market_data.analytics import MarketDataAnalytics
 from order_book_simulator.matching.matching_engine import MatchingEngine
 from order_book_simulator.multicast.multicast_publisher import MulticastPublisher
 
 logger = logging.getLogger(__name__)
 
-# Exceptions that indicate the message itself is malformed or unknown.
-# These are skipped with structured context - retrying won't help.
-# Anything outside this tuple is treated as a bug or infrastructure
-# failure and is allowed to propagate, crashing the consumer so the
-# supervisor restarts it rather than silently processing bad state.
-RECOVERABLE_ERRORS = (
+# Exceptions that indicate the Kafka message cannot be parsed or does
+# not match the consumer envelope contract. These are skipped with
+# structured context because retrying the same bytes will not help.
+MALFORMED_MESSAGE_ERRORS = (
     orjson.JSONDecodeError,
+    InvalidOperation,
     KeyError,
     ValueError,
     TypeError,
@@ -62,6 +65,132 @@ class OrderConsumer:
         self.session_timeout_ms = session_timeout_ms
         self.heartbeat_interval_ms = heartbeat_interval_ms
 
+    @staticmethod
+    def _decode_message_payload(value: bytes) -> dict[str, Any]:
+        """Decode a Kafka payload into a JSON object.
+
+        Args:
+            value: The raw Kafka message value.
+
+        Returns:
+            The decoded JSON object.
+
+        Raises:
+            TypeError: If the payload is not a JSON object.
+        """
+        order_data = orjson.loads(value)
+        if not isinstance(order_data, dict):
+            raise TypeError("Kafka message payload must be a JSON object")
+        return order_data
+
+    @staticmethod
+    def _require_string(order_data: dict[str, Any], field: str) -> str:
+        """Return a required non-empty string field from a Kafka message.
+
+        Args:
+            order_data: The decoded Kafka message.
+            field: The field name to read.
+
+        Returns:
+            The validated string value.
+
+        Raises:
+            KeyError: If the field is missing.
+            TypeError: If the field is not a non-empty string.
+        """
+        value = order_data[field]
+        if not isinstance(value, str) or not value:
+            raise TypeError(f"{field} must be a non-empty string")
+        return value
+
+    @staticmethod
+    def _validate_uuid(value: str, field: str) -> None:
+        """Validate that a string field contains a UUID.
+
+        Args:
+            value: The candidate UUID string.
+            field: The source field name used in error messages.
+
+        Raises:
+            ValueError: If the value is not a UUID.
+        """
+        try:
+            UUID(value)
+        except ValueError as exc:
+            raise ValueError(f"{field} must be a UUID") from exc
+
+    @staticmethod
+    def _validate_decimal(value: Any, field: str) -> None:
+        """Validate that a field can be parsed as a decimal value.
+
+        Args:
+            value: The candidate decimal value.
+            field: The source field name used in error messages.
+
+        Raises:
+            TypeError: If the value is null.
+            InvalidOperation: If the value cannot be parsed as a Decimal.
+        """
+        if value is None:
+            raise TypeError(f"{field} must not be null")
+        Decimal(str(value))
+
+    @staticmethod
+    def _parse_gateway_time(order_data: dict[str, Any]) -> datetime:
+        """Parse the gateway timestamp from an order message.
+
+        Args:
+            order_data: The decoded order message.
+
+        Returns:
+            The parsed gateway timestamp.
+
+        Raises:
+            ValueError: If the timestamp is invalid or timezone-naive.
+        """
+        raw_gateway_time = OrderConsumer._require_string(
+            order_data, "gateway_received_at"
+        )
+        gateway_time = datetime.fromisoformat(raw_gateway_time)
+        if gateway_time.tzinfo is None:
+            raise ValueError("gateway_received_at must include a timezone")
+        return gateway_time
+
+    def _validate_order_message(self, order_data: dict[str, Any]) -> datetime:
+        """Validate an order message before handing it to the engine.
+
+        This only validates the Kafka envelope and parseable field types.
+        Matching-domain validation belongs to the matching engine so those
+        failures propagate instead of being committed as skipped messages.
+
+        Args:
+            order_data: The decoded order message.
+
+        Returns:
+            The parsed gateway timestamp used for latency logging.
+        """
+        self._validate_uuid(self._require_string(order_data, "id"), "id")
+        self._validate_uuid(self._require_string(order_data, "stock_id"), "stock_id")
+        self._require_string(order_data, "ticker")
+        OrderSide(self._require_string(order_data, "side"))
+        OrderType(self._require_string(order_data, "order_type"))
+        self._validate_decimal(order_data["quantity"], "quantity")
+        if "price" not in order_data:
+            raise KeyError("price")
+        if order_data["price"] is not None:
+            self._validate_decimal(order_data["price"], "price")
+        return self._parse_gateway_time(order_data)
+
+    def _validate_cancel_message(self, order_data: dict[str, Any]) -> None:
+        """Validate a cancellation message before handing it to the engine.
+
+        Args:
+            order_data: The decoded cancellation message.
+        """
+        self._validate_uuid(self._require_string(order_data, "order_id"), "order_id")
+        self._validate_uuid(self._require_string(order_data, "stock_id"), "stock_id")
+        self._require_string(order_data, "ticker")
+
     async def _process_message(self, message: ConsumerRecord) -> None:
         """
         Processes a single message from Kafka.
@@ -74,51 +203,60 @@ class OrderConsumer:
             message: The message received from Kafka.
         """
         order_id: str | None = None
+        message_type: str | None = None
+        order_data: dict[str, Any] = {}
+        gateway_time: datetime | None = None
         try:
             if message.value is None:
                 return
-            order_data = orjson.loads(message.value)
+            order_data = self._decode_message_payload(message.value)
 
-            match order_data.get("type"):
+            message_type = self._require_string(order_data, "type")
+            match message_type:
                 case "health_check":
                     return
                 case "cancel":
-                    order_id = order_data["order_id"]
-                    logger.info(f"Processing cancellation: {order_id=}")
-                    result = await self.matching_engine.cancel_order(order_data)
-                    logger.info(f"Cancelled order {order_id=}: {result}")
-                    return
+                    order_id = self._require_string(order_data, "order_id")
+                    self._validate_cancel_message(order_data)
                 case "order":
-                    order_id = order_data["id"]
-                    # Track the latency for new orders.
-                    gateway_time = datetime.fromisoformat(
-                        order_data["gateway_received_at"]
-                    )
-                    kafka_latency = (
-                        datetime.now(timezone.utc) - gateway_time
-                    ).total_seconds() * 1000
-                    logger.info(
-                        f"Processing order: {order_id=}, "
-                        f"kafka_latency={kafka_latency:.2f}ms"
-                    )
-
-                    start_process = datetime.now(timezone.utc)
-                    await self.matching_engine.process_order(order_data)
-                    process_time = (
-                        datetime.now(timezone.utc) - start_process
-                    ).total_seconds() * 1000
-                    total_latency = (
-                        datetime.now(timezone.utc) - gateway_time
-                    ).total_seconds() * 1000
-                    logger.info(
-                        f"Order processed: {order_id=}, "
-                        f"matching_time={process_time:.2f}ms, "
-                        f"total_latency={total_latency:.2f}ms"
-                    )
+                    order_id = self._require_string(order_data, "id")
+                    gateway_time = self._validate_order_message(order_data)
                 case _:
-                    raise ValueError(f"Unknown order type: {order_data.get('type')!r}")
-        except RECOVERABLE_ERRORS as e:
+                    raise ValueError(f"Unknown message type: {message_type!r}")
+        except MALFORMED_MESSAGE_ERRORS as e:
             self._log_skipped_message(message, e, order_id)
+            return
+
+        if message_type == "cancel":
+            logger.info(f"Processing cancellation: {order_id=}")
+            result = await self.matching_engine.cancel_order(order_data)
+            logger.info(f"Cancelled order {order_id=}: {result}")
+            return
+
+        if message_type == "order":
+            if gateway_time is None:
+                raise RuntimeError("Order message was parsed without gateway time.")
+            # Track the latency for new orders.
+            kafka_latency = (
+                datetime.now(timezone.utc) - gateway_time
+            ).total_seconds() * 1000
+            logger.info(
+                f"Processing order: {order_id=}, kafka_latency={kafka_latency:.2f}ms"
+            )
+
+            start_process = datetime.now(timezone.utc)
+            await self.matching_engine.process_order(order_data)
+            process_time = (
+                datetime.now(timezone.utc) - start_process
+            ).total_seconds() * 1000
+            total_latency = (
+                datetime.now(timezone.utc) - gateway_time
+            ).total_seconds() * 1000
+            logger.info(
+                f"Order processed: {order_id=}, "
+                f"matching_time={process_time:.2f}ms, "
+                f"total_latency={total_latency:.2f}ms"
+            )
 
     def _log_skipped_message(
         self,
