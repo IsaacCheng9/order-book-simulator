@@ -1,16 +1,70 @@
+import asyncio
 import time
 from types import SimpleNamespace
+from typing import Any, ClassVar, cast
 from unittest.mock import AsyncMock, MagicMock
 from uuid import uuid4
 
+import orjson
 import pytest
+from aiokafka import AIOKafkaConsumer, ConsumerRecord, TopicPartition
 
 from order_book_simulator.market_data import db_consumer as db_consumer_module
 from order_book_simulator.market_data.db_consumer import MarketDataDBConsumer
 
 
-def create_market_data(stock_id: str | None = None) -> dict:
-    """Creates test market data."""
+class StopPolling(Exception):
+    """Stop a fake Kafka consumer loop in tests."""
+
+
+class FakeKafkaConsumer:
+    """Provide a controllable Kafka consumer for DB consumer tests."""
+
+    poll_results: ClassVar[list[Any]] = []
+    last_instance: ClassVar["FakeKafkaConsumer | None"] = None
+
+    def __init__(self, *args: Any, **kwargs: Any) -> None:
+        self.args = args
+        self.kwargs = kwargs
+        self.commits: list[dict[TopicPartition, int]] = []
+        self.getmany_calls: list[dict[str, Any]] = []
+        self.started = False
+        self.stopped = False
+        FakeKafkaConsumer.last_instance = self
+
+    async def start(self) -> None:
+        """Record that the fake consumer was started."""
+        self.started = True
+
+    async def stop(self) -> None:
+        """Record that the fake consumer was stopped."""
+        self.stopped = True
+
+    async def commit(self, offsets: dict[TopicPartition, int] | None = None) -> None:
+        """Record committed offsets."""
+        if offsets is None:
+            offsets = {}
+        self.commits.append(offsets)
+
+    async def getmany(
+        self, **kwargs: Any
+    ) -> dict[TopicPartition, list[ConsumerRecord]]:
+        """Return configured poll results."""
+        self.getmany_calls.append(kwargs)
+        if not self.__class__.poll_results:
+            raise StopPolling
+
+        result = self.__class__.poll_results.pop(0)
+        if result == "sleep_empty":
+            await asyncio.sleep(0.02)
+            return {}
+        if isinstance(result, BaseException):
+            raise result
+        return result
+
+
+def create_market_data(stock_id: str | None = None) -> dict[str, Any]:
+    """Create test market data."""
     return {
         "stock_id": stock_id or str(uuid4()),
         "ticker": "TEST",
@@ -20,21 +74,57 @@ def create_market_data(stock_id: str | None = None) -> dict:
     }
 
 
+def make_record(
+    value: bytes | None,
+    offset: int = 42,
+    partition: int = 0,
+) -> ConsumerRecord:
+    """Build a minimal ConsumerRecord for tests."""
+    return ConsumerRecord(
+        topic="market-data",
+        partition=partition,
+        offset=offset,
+        timestamp=0,
+        timestamp_type=0,
+        key=None,
+        value=value,
+        checksum=None,
+        serialized_key_size=-1,
+        serialized_value_size=-1,
+        headers=(),
+    )
+
+
+def use_fake_kafka(
+    monkeypatch: pytest.MonkeyPatch,
+    poll_results: list[Any],
+) -> None:
+    """Patch the DB consumer to use a fake Kafka consumer."""
+    FakeKafkaConsumer.poll_results = poll_results
+    FakeKafkaConsumer.last_instance = None
+    monkeypatch.setattr(db_consumer_module, "AIOKafkaConsumer", FakeKafkaConsumer)
+
+
 @pytest.fixture
 def consumer() -> MarketDataDBConsumer:
-    """Creates a consumer with small batch size for testing."""
-    return MarketDataDBConsumer(batch_size=3, batch_timeout_ms=100)
+    """Create a consumer with small batch size for testing."""
+    return MarketDataDBConsumer(
+        batch_size=3,
+        batch_timeout_ms=100,
+        max_flush_retries=1,
+        retry_backoff_ms=0,
+    )
 
 
 @pytest.fixture
 def mock_db(monkeypatch):
-    """Patches database dependencies for flush_batch tests."""
+    """Patch database dependencies for flush_batch tests."""
     mock_session = AsyncMock()
     mock_session.__aenter__ = AsyncMock(return_value=mock_session)
     mock_session.__aexit__ = AsyncMock(return_value=None)
     mock_session.begin = MagicMock(return_value=AsyncMock())
     mock_session.begin.return_value.__aenter__ = AsyncMock()
-    mock_session.begin.return_value.__aexit__ = AsyncMock()
+    mock_session.begin.return_value.__aexit__ = AsyncMock(return_value=None)
 
     mock_factory = MagicMock(return_value=mock_session)
     mock_persist_snapshot = AsyncMock()
@@ -105,10 +195,13 @@ async def test_flush_batch_persists_trades_when_present(consumer, mock_db):
 async def test_flush_batch_clears_batch(consumer, mock_db):
     """Flushing should clear the batch."""
     consumer.batch = [create_market_data(), create_market_data()]
+    topic_partition = TopicPartition("market-data", 0)
+    consumer.pending_offsets = {topic_partition: 43}
 
     await consumer._flush_batch()
 
     assert len(consumer.batch) == 0
+    assert consumer.pending_offsets == {}
 
 
 @pytest.mark.asyncio
@@ -126,15 +219,68 @@ async def test_flush_batch_updates_last_flush_time(consumer, mock_db):
 
 
 @pytest.mark.asyncio
-async def test_flush_batch_handles_errors_gracefully(consumer, mock_db):
-    """Flushing should handle errors without raising."""
+async def test_flush_batch_raises_and_retains_batch_on_db_error(consumer, mock_db):
+    """Flushing should keep uncommitted batches when persistence fails."""
+    fake_consumer = SimpleNamespace(commit=AsyncMock())
+    consumer.consumer = cast(AIOKafkaConsumer, fake_consumer)
     consumer.batch = [create_market_data()]
+    topic_partition = TopicPartition("market-data", 0)
+    consumer.pending_offsets = {topic_partition: 43}
     mock_db.persist_snapshot.side_effect = Exception("DB error")
 
-    # Should not raise.
+    with pytest.raises(Exception, match="DB error"):
+        await consumer._flush_batch()
+
+    assert len(consumer.batch) == 1
+    assert consumer.pending_offsets == {topic_partition: 43}
+    fake_consumer.commit.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_flush_batch_retries_before_success(mock_db):
+    """Flushing should retry transient database errors before giving up."""
+    consumer = MarketDataDBConsumer(
+        batch_size=3,
+        batch_timeout_ms=100,
+        max_flush_retries=2,
+        retry_backoff_ms=0,
+    )
+    consumer.batch = [create_market_data()]
+    mock_db.persist_snapshot.side_effect = [Exception("transient"), None]
+
     await consumer._flush_batch()
-    # Batch should still be cleared.
+
+    assert mock_db.persist_snapshot.call_count == 2
     assert len(consumer.batch) == 0
+
+
+@pytest.mark.asyncio
+async def test_flush_batch_commits_offsets_after_success(consumer, mock_db):
+    """Flushing should commit Kafka offsets after successful persistence."""
+    fake_consumer = SimpleNamespace(commit=AsyncMock())
+    consumer.consumer = cast(AIOKafkaConsumer, fake_consumer)
+    consumer.batch = [create_market_data()]
+    topic_partition = TopicPartition("market-data", 0)
+    consumer.pending_offsets = {topic_partition: 43}
+
+    await consumer._flush_batch()
+
+    fake_consumer.commit.assert_awaited_once_with({topic_partition: 43})
+
+
+@pytest.mark.asyncio
+async def test_flush_batch_does_not_commit_offsets_on_db_error(consumer, mock_db):
+    """Flushing should not commit Kafka offsets when persistence fails."""
+    fake_consumer = SimpleNamespace(commit=AsyncMock())
+    consumer.consumer = cast(AIOKafkaConsumer, fake_consumer)
+    consumer.batch = [create_market_data()]
+    consumer.pending_offsets = {TopicPartition("market-data", 0): 43}
+    mock_db.persist_snapshot.side_effect = Exception("DB error")
+
+    with pytest.raises(Exception, match="DB error"):
+        await consumer._flush_batch()
+
+    fake_consumer.commit.assert_not_awaited()
 
 
 def test_batch_size_threshold(consumer):
@@ -142,14 +288,10 @@ def test_batch_size_threshold(consumer):
     consumer.batch = [create_market_data() for _ in range(2)]
     consumer.last_flush = time.time()
 
-    # Below threshold.
-    should_flush = len(consumer.batch) >= consumer.batch_size
-    assert not should_flush
+    assert not consumer._should_flush()
 
-    # At threshold.
     consumer.batch.append(create_market_data())
-    should_flush = len(consumer.batch) >= consumer.batch_size
-    assert should_flush
+    assert consumer._should_flush()
 
 
 def test_batch_timeout_threshold(consumer):
@@ -157,11 +299,118 @@ def test_batch_timeout_threshold(consumer):
     consumer.batch = [create_market_data()]
     consumer.last_flush = time.time()
 
-    # Just flushed, no timeout.
-    should_flush = time.time() - consumer.last_flush >= consumer.batch_timeout
-    assert not should_flush
+    assert not consumer._should_flush()
 
-    # Simulate timeout.
     consumer.last_flush = time.time() - consumer.batch_timeout - 0.01
-    should_flush = time.time() - consumer.last_flush >= consumer.batch_timeout
-    assert should_flush
+    assert consumer._should_flush()
+
+
+def test_add_to_batch_tracks_highest_offsets(consumer):
+    """Consumer should track the highest pending offset for each partition."""
+    consumer._add_to_batch(create_market_data(), make_record(b"{}", offset=3))
+    consumer._add_to_batch(create_market_data(), make_record(b"{}", offset=7))
+
+    assert consumer.pending_offsets == {TopicPartition("market-data", 0): 8}
+
+
+@pytest.mark.asyncio
+async def test_start_disables_auto_commit(
+    consumer,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    """Consumer should disable Kafka auto-commit."""
+    use_fake_kafka(monkeypatch, [StopPolling()])
+
+    with pytest.raises(StopPolling):
+        await consumer.start()
+
+    fake_consumer = FakeKafkaConsumer.last_instance
+    assert fake_consumer is not None
+    assert fake_consumer.kwargs["enable_auto_commit"] is False
+    assert fake_consumer.stopped is True
+
+
+@pytest.mark.asyncio
+async def test_start_flushes_partial_batch_after_timeout(
+    mock_db,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    """Consumer should flush partial batches even when the topic goes quiet."""
+    consumer = MarketDataDBConsumer(
+        batch_size=3,
+        batch_timeout_ms=10,
+        max_flush_retries=1,
+        retry_backoff_ms=0,
+    )
+    topic_partition = TopicPartition("market-data", 0)
+    payload = orjson.dumps(create_market_data())
+    use_fake_kafka(
+        monkeypatch,
+        [
+            {topic_partition: [make_record(payload, offset=0)]},
+            "sleep_empty",
+            StopPolling(),
+        ],
+    )
+
+    with pytest.raises(StopPolling):
+        await consumer.start()
+
+    fake_consumer = FakeKafkaConsumer.last_instance
+    assert fake_consumer is not None
+    assert mock_db.persist_snapshot.call_count == 1
+    assert fake_consumer.commits == [{topic_partition: 1}]
+    assert consumer.batch == []
+
+
+@pytest.mark.asyncio
+async def test_start_commits_empty_messages_without_persisting(
+    mock_db,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    """Consumer should commit empty Kafka records without adding them to a batch."""
+    consumer = MarketDataDBConsumer(max_flush_retries=1, retry_backoff_ms=0)
+    topic_partition = TopicPartition("market-data", 0)
+    use_fake_kafka(
+        monkeypatch,
+        [
+            {topic_partition: [make_record(None, offset=5)]},
+            StopPolling(),
+        ],
+    )
+
+    with pytest.raises(StopPolling):
+        await consumer.start()
+
+    fake_consumer = FakeKafkaConsumer.last_instance
+    assert fake_consumer is not None
+    assert fake_consumer.commits == [{topic_partition: 6}]
+    mock_db.persist_snapshot.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_start_commits_malformed_messages_without_persisting(
+    mock_db,
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+):
+    """Consumer should skip and commit malformed Kafka records."""
+    caplog.set_level("ERROR")
+    consumer = MarketDataDBConsumer(max_flush_retries=1, retry_backoff_ms=0)
+    topic_partition = TopicPartition("market-data", 0)
+    use_fake_kafka(
+        monkeypatch,
+        [
+            {topic_partition: [make_record(b"not json", offset=8)]},
+            StopPolling(),
+        ],
+    )
+
+    with pytest.raises(StopPolling):
+        await consumer.start()
+
+    fake_consumer = FakeKafkaConsumer.last_instance
+    assert fake_consumer is not None
+    assert fake_consumer.commits == [{topic_partition: 9}]
+    assert "Skipping malformed market data Kafka message" in caplog.text
+    mock_db.persist_snapshot.assert_not_called()
