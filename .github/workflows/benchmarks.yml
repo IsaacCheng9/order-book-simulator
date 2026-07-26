@@ -15,9 +15,6 @@ jobs:
     steps:
       - uses: actions/checkout@main
 
-      - name: Switch to current branch
-        run: git checkout ${{ env.BRANCH }}
-
       - name: Set up Python ${{ matrix.python-version }}
         uses: actions/setup-python@main
         with:
@@ -42,7 +39,7 @@ jobs:
 
       - name: Run unit benchmarks
         run: |
-          set -e  # Exit immediately if any command fails
+          set -euo pipefail
           echo "Commit: ${{ github.sha }}" | tee benchmark_results.txt
           echo "Date: $(date -u)" | tee -a benchmark_results.txt
           echo "" | tee -a benchmark_results.txt
@@ -51,7 +48,7 @@ jobs:
 
       - name: Run integration benchmarks
         run: |
-          set -e  # Exit immediately if any command fails
+          set -euo pipefail
           echo "" | tee -a benchmark_results.txt
           echo "=== Integration Benchmarks ===" | tee -a benchmark_results.txt
           uv run --no-project python benchmarks/integration/integration_benchmark.py | tee -a benchmark_results.txt

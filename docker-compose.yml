@@ -43,7 +43,11 @@ services:
       KAFKA_AUTO_LEADER_REBALANCE_ENABLE: "true"
       KAFKA_UNCLEAN_LEADER_ELECTION_ENABLE: "false"
     healthcheck:
-      test: nc -z localhost 9092 || exit 1
+      test:
+        [
+          "CMD-SHELL",
+          "kafka-broker-api-versions --bootstrap-server localhost:9092 >/dev/null 2>&1",
+        ]
       interval: 5s
       timeout: 10s
       retries: 5
