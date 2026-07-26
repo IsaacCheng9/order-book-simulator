@@ -1,5 +1,5 @@
 import asyncio
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from uuid import uuid4
 
 from order_book_simulator.common.models import OrderSide, OrderType
@@ -18,7 +18,7 @@ def test_get_all_order_books_with_orders(test_client, matching_engine):
             "quantity": "10.00",
             "side": OrderSide.BUY.value,
             "order_type": OrderType.LIMIT.value,
-            "created_at": datetime.now(timezone.utc),
+            "created_at": datetime.now(UTC),
         }
         asyncio.run(matching_engine.process_order(order))
 

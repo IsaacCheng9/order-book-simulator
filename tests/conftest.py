@@ -1,4 +1,4 @@
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from decimal import Decimal
 from unittest.mock import AsyncMock, MagicMock
 from uuid import UUID, uuid4
@@ -176,7 +176,7 @@ def db_session() -> AsyncSession:
                 mock_trade.price = f"{100 + i}.00"
                 mock_trade.quantity = f"{10 + i}.00"
                 mock_trade.total_amount = f"{(100 + i) * (10 + i)}.00"
-                mock_trade.trade_time = datetime.now(timezone.utc)
+                mock_trade.trade_time = datetime.now(UTC)
                 mock_trade.buyer_order_id = uuid4()
                 mock_trade.seller_order_id = uuid4()
 
@@ -201,7 +201,7 @@ def db_session() -> AsyncSession:
                 mock_trade.price = f"{150 + i}.00"
                 mock_trade.quantity = f"{5 + i}.00"
                 mock_trade.total_amount = f"{(150 + i) * (5 + i)}.00"
-                mock_trade.trade_time = datetime.now(timezone.utc)
+                mock_trade.trade_time = datetime.now(UTC)
                 mock_trade.buyer_order_id = uuid4()
                 mock_trade.seller_order_id = uuid4()
                 mock_trades.append(mock_trade)
@@ -289,11 +289,11 @@ def mock_redis():
 
         async def keys(self, pattern: str) -> list[str]:
             if pattern == "order_book:*":
-                return [k for k in mock_data.keys() if k.startswith("order_book:")]
+                return [k for k in mock_data if k.startswith("order_book:")]
             if pattern.endswith("*"):
                 prefix = pattern[:-1]
-                return [k for k in mock_data.keys() if k.startswith(prefix)]
-            return [k for k in mock_data.keys() if k == pattern]
+                return [k for k in mock_data if k.startswith(prefix)]
+            return [k for k in mock_data if k == pattern]
 
         def exists(self, key: str) -> bool:
             return key in mock_data

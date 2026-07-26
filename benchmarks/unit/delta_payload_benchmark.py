@@ -7,7 +7,7 @@ bandwidth reduction from delta publishing.
 """
 
 from dataclasses import asdict
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from decimal import Decimal
 from uuid import uuid4
 
@@ -19,7 +19,7 @@ from order_book_simulator.matching.order_book import OrderBook
 
 def create_order(
     price: Decimal,
-    quantity: Decimal = Decimal("100"),
+    quantity: Decimal = Decimal(100),
     side: OrderSide = OrderSide.BUY,
 ) -> dict:
     """Create a test limit order."""
@@ -29,7 +29,7 @@ def create_order(
         "quantity": quantity,
         "side": side,
         "order_type": OrderType.LIMIT,
-        "created_at": datetime.now(timezone.utc),
+        "created_at": datetime.now(UTC),
     }
 
 
@@ -68,8 +68,8 @@ def run_benchmark() -> None:
     resting_orders: list[dict] = []
     for i in range(50):
         for _ in range(5):
-            bid = create_order(Decimal(100 + i), Decimal("100"), OrderSide.BUY)
-            ask = create_order(Decimal(200 + i), Decimal("100"), OrderSide.SELL)
+            bid = create_order(Decimal(100 + i), Decimal(100), OrderSide.BUY)
+            ask = create_order(Decimal(200 + i), Decimal(100), OrderSide.SELL)
             resting_orders.extend([bid, ask])
 
             seq_before = book.delta_buffer.current_sequence
@@ -84,7 +84,7 @@ def run_benchmark() -> None:
     # lowest ask levels.
     print("Phase 2: Partial matches (100 orders)")
     for i in range(100):
-        order = create_order(Decimal(200 + i % 10), Decimal("30"), OrderSide.BUY)
+        order = create_order(Decimal(200 + i % 10), Decimal(30), OrderSide.BUY)
         seq_before = book.delta_buffer.current_sequence
         book.add_order(order)
         measure_operation()
@@ -93,7 +93,7 @@ def run_benchmark() -> None:
     # ask levels.
     print("Phase 3: Full matches (20 aggressive orders)")
     for i in range(20):
-        order = create_order(Decimal(250), Decimal("500"), OrderSide.BUY)
+        order = create_order(Decimal(250), Decimal(500), OrderSide.BUY)
         seq_before = book.delta_buffer.current_sequence
         book.add_order(order)
         measure_operation()

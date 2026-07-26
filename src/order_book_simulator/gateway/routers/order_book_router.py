@@ -1,6 +1,6 @@
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from decimal import Decimal
-from typing import Any
+from typing import Annotated, Any
 from uuid import UUID, uuid4
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -47,12 +47,15 @@ async def cancel_order(
         "status": "accepted",
         "order_id": str(order_id),
         "reason": "Order cancellation request submitted",
-        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "timestamp": datetime.now(UTC).isoformat(),
     }
 
 
 @order_book_router.post("", response_model=OrderResponse)
-async def create_order(order_request: OrderRequest, db=Depends(get_db)):
+async def create_order(
+    order_request: OrderRequest,
+    db: Annotated[AsyncSession, Depends(get_db)],
+) -> OrderResponse:
     """
     Creates a new order for a stock.
 
@@ -62,7 +65,7 @@ async def create_order(order_request: OrderRequest, db=Depends(get_db)):
     Returns:
         Confirmation of the created order including any filled quantity.
     """
-    start_time = datetime.now(timezone.utc)
+    start_time = datetime.now(UTC)
     if app_state.producer is None:
         raise HTTPException(
             status_code=503, detail="Order processing service is unavailable"
@@ -83,8 +86,8 @@ async def create_order(order_request: OrderRequest, db=Depends(get_db)):
             "time_in_force": order_request.time_in_force,
             "client_order_id": order_request.client_order_id,
             "status": OrderStatus.PENDING,
-            "filled_quantity": Decimal("0"),
-            "total_fee": Decimal("0"),
+            "filled_quantity": Decimal(0),
+            "total_fee": Decimal(0),
             "gateway_received_at": start_time.isoformat(),
         }
 
@@ -117,7 +120,7 @@ async def get_order_books() -> dict[str, Any]:
     """
     order_books = await order_book_cache.get_all_order_books()
     return {
-        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "timestamp": datetime.now(UTC).isoformat(),
         "order_books": {
             stock_id: {
                 "bids": book["bids"],
@@ -131,7 +134,9 @@ async def get_order_books() -> dict[str, Any]:
 
 @order_book_router.get("/{ticker}/deltas")
 async def get_deltas(
-    ticker: str, sequence_number: int, db: AsyncSession = Depends(get_db)
+    ticker: str,
+    sequence_number: int,
+    db: Annotated[AsyncSession, Depends(get_db)],
 ) -> dict[str, Any]:
     """
     Gets the deltas for the specified stock.
@@ -177,7 +182,7 @@ async def get_deltas(
 
 @order_book_router.get("/{ticker}")
 async def get_order_book(
-    ticker: str, db: AsyncSession = Depends(get_db)
+    ticker: str, db: Annotated[AsyncSession, Depends(get_db)]
 ) -> dict[str, Any]:
     """
     Returns the order book for the specified stock.
@@ -207,7 +212,7 @@ async def get_order_book(
 
     return {
         "ticker": ticker,
-        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "timestamp": datetime.now(UTC).isoformat(),
         "book": snapshot,
         "trades": trades,
     }

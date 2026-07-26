@@ -1,8 +1,8 @@
 import asyncio
 import random
 import time
+from collections.abc import AsyncIterator, Iterator
 from decimal import Decimal
-from typing import AsyncIterator, Iterator
 from uuid import uuid4
 
 from order_book_simulator.common.models import OrderRequest, OrderSide, OrderType

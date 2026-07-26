@@ -11,7 +11,7 @@ various conditions and before / after changes to the code implementation.
 
 import asyncio
 import time
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from decimal import Decimal
 from typing import Any
 from unittest.mock import AsyncMock
@@ -41,10 +41,10 @@ def create_order(
         "stock_id": str(stock_id),
         "ticker": "TEST",
         "price": price,
-        "quantity": Decimal("100"),
+        "quantity": Decimal(100),
         "side": side,
         "order_type": OrderType.LIMIT,
-        "created_at": datetime.now(timezone.utc),
+        "created_at": datetime.now(UTC),
     }
 
 
@@ -107,7 +107,7 @@ async def benchmark_matching(num_orders: int = 10_000) -> float:
     """
     engine = create_engine()
     stock_id = uuid4()
-    price = Decimal("100")
+    price = Decimal(100)
 
     orders = [
         create_order(stock_id, price, OrderSide.BUY if i % 2 == 0 else OrderSide.SELL)

@@ -1,4 +1,4 @@
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from fastapi import APIRouter, HTTPException
 
@@ -11,7 +11,7 @@ health_router = APIRouter()
 async def health_check():
     return {
         "status": "healthy",
-        "timestamp": datetime.now(timezone.utc),
+        "timestamp": datetime.now(UTC),
         "service": "gateway",
     }
 
@@ -21,7 +21,7 @@ async def kafka_health() -> dict[str, str]:
     """Checks the Kafka producer's connectivity status."""
     status = {
         "kafka_producer": "unhealthy",
-        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "timestamp": datetime.now(UTC).isoformat(),
     }
 
     if not app_state.producer:
