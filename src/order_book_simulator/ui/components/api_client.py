@@ -17,7 +17,7 @@ def check_gateway_connection() -> bool:
     try:
         response = requests.get(f"{GATEWAY_URL}/v1/health", timeout=2)
         return response.status_code == 200
-    except Exception as e:
+    except requests.RequestException as e:
         st.error(f"Error checking gateway connection: {e}")
         return False
 
@@ -42,7 +42,7 @@ def get_order_book_data(ticker: str) -> dict | None:
         else:
             st.error(f"Failed to fetch order book: {response.status_code}")
             return None
-    except Exception as e:
+    except requests.RequestException as e:
         st.error(f"Error fetching order book: {e}")
         return None
 
@@ -61,7 +61,7 @@ def get_all_order_books() -> dict | None:
         else:
             st.error(f"Failed to fetch order book collection: {response.status_code}")
             return None
-    except Exception as e:
+    except requests.RequestException as e:
         st.error(f"Error fetching order book collection: {e}")
         return None
 
@@ -82,7 +82,7 @@ def get_active_stock_tickers() -> dict | None:
         else:
             st.error(f"Failed to fetch stock tickers: {response.status_code}")
             return None
-    except Exception as e:
+    except requests.RequestException as e:
         st.error(f"Error fetching stock tickers: {e}")
         return None
 
@@ -101,7 +101,7 @@ def get_all_stocks() -> dict | None:
         else:
             st.error(f"Failed to fetch stocks: {response.status_code}")
             return None
-    except Exception as e:
+    except requests.RequestException as e:
         st.error(f"Error fetching stocks: {e}")
         return None
 
@@ -140,7 +140,7 @@ def submit_order(order_data: dict) -> dict | None:
                 except ValueError:
                     st.error(f"Error (HTTP {response.status_code})")
             return None
-    except Exception as e:
+    except requests.RequestException as e:
         st.error(f"Error submitting order: {e}")
         return None
 
@@ -164,7 +164,7 @@ def get_all_trades(limit: int = 100) -> dict | None:
         else:
             st.error(f"Failed to fetch trades: {response.status_code}")
             return None
-    except Exception as e:
+    except requests.RequestException as e:
         st.error(f"Error fetching trades: {e}")
         return None
 
@@ -194,7 +194,7 @@ def get_trades_for_stock(ticker: str, limit: int = 100) -> dict | None:
         else:
             st.error(f"Failed to fetch trades for {ticker}: {response.status_code}")
             return None
-    except Exception as e:
+    except requests.RequestException as e:
         st.error(f"Error fetching trades for {ticker}: {e}")
         return None
 
@@ -224,7 +224,7 @@ def get_trade_analytics(ticker: str, since_hours: int = 24) -> dict | None:
         else:
             st.error(f"Failed to fetch analytics for {ticker}: {response.status_code}")
             return None
-    except Exception as e:
+    except requests.RequestException as e:
         st.error(f"Error fetching analytics for {ticker}: {e}")
         return None
 
@@ -253,6 +253,6 @@ def get_global_trade_analytics(since_hours: int = 24) -> dict | None:
         else:
             st.error(f"Failed to fetch global analytics: {response.status_code}")
             return None
-    except Exception as e:
+    except requests.RequestException as e:
         st.error(f"Error fetching global analytics: {e}")
         return None

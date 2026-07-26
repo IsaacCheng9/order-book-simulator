@@ -13,7 +13,7 @@ def format_timestamp(iso_timestamp: str) -> str:
     """
     try:
         # Parse the ISO timestamp
-        dt = datetime.fromisoformat(iso_timestamp.replace("Z", "+00:00"))
+        dt = datetime.fromisoformat(iso_timestamp)
         # Format as: "30 Dec 2024 at 14:25:23 UTC"
         return dt.strftime("%d %b %Y at %H:%M:%S UTC")
     except ValueError, AttributeError:

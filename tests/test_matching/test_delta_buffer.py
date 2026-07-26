@@ -18,24 +18,24 @@ def test_add_increments_sequence_monotonically(buffer: DeltaBuffer) -> None:
         DeltaType.LEVEL_UPDATE,
         "AAPL",
         OrderSide.BUY,
-        Decimal("150"),
-        Decimal("100"),
+        Decimal(150),
+        Decimal(100),
         3,
     )
     d2 = buffer.add(
         DeltaType.LEVEL_UPDATE,
         "AAPL",
         OrderSide.BUY,
-        Decimal("150"),
-        Decimal("200"),
+        Decimal(150),
+        Decimal(200),
         5,
     )
     d3 = buffer.add(
         DeltaType.TRADE,
         "AAPL",
         None,
-        Decimal("150"),
-        Decimal("50"),
+        Decimal(150),
+        Decimal(50),
     )
 
     assert d1.sequence_number == 1
@@ -50,24 +50,24 @@ def test_get_deltas_since_returns_newer_deltas(buffer: DeltaBuffer) -> None:
         DeltaType.LEVEL_UPDATE,
         "AAPL",
         OrderSide.BUY,
-        Decimal("150"),
-        Decimal("100"),
+        Decimal(150),
+        Decimal(100),
         3,
     )
     buffer.add(
         DeltaType.LEVEL_REMOVE,
         "AAPL",
         OrderSide.SELL,
-        Decimal("155"),
-        Decimal("0"),
+        Decimal(155),
+        Decimal(0),
         0,
     )
     buffer.add(
         DeltaType.TRADE,
         "AAPL",
         None,
-        Decimal("150"),
-        Decimal("50"),
+        Decimal(150),
+        Decimal(50),
     )
 
     deltas = buffer.get_deltas_since(1)
@@ -88,8 +88,8 @@ def test_get_deltas_since_returns_empty_when_up_to_date(
         DeltaType.LEVEL_UPDATE,
         "AAPL",
         OrderSide.BUY,
-        Decimal("150"),
-        Decimal("100"),
+        Decimal(150),
+        Decimal(100),
         3,
     )
 
@@ -109,7 +109,7 @@ def test_get_deltas_since_returns_none_when_evicted(
             DeltaType.LEVEL_UPDATE,
             "AAPL",
             OrderSide.BUY,
-            Decimal("150"),
+            Decimal(150),
             Decimal(i),
             i,
         )
@@ -139,16 +139,16 @@ def test_get_deltas_since_zero_returns_all_deltas(
         DeltaType.LEVEL_UPDATE,
         "AAPL",
         OrderSide.BUY,
-        Decimal("150"),
-        Decimal("100"),
+        Decimal(150),
+        Decimal(100),
         3,
     )
     buffer.add(
         DeltaType.TRADE,
         "AAPL",
         None,
-        Decimal("150"),
-        Decimal("50"),
+        Decimal(150),
+        Decimal(50),
     )
 
     deltas = buffer.get_deltas_since(0)
@@ -172,7 +172,7 @@ def test_delta_fields_are_correct(buffer: DeltaBuffer) -> None:
         "MSFT",
         OrderSide.SELL,
         Decimal("300.50"),
-        Decimal("75"),
+        Decimal(75),
         2,
     )
 
@@ -180,7 +180,7 @@ def test_delta_fields_are_correct(buffer: DeltaBuffer) -> None:
     assert delta.ticker == "MSFT"
     assert delta.side == OrderSide.SELL
     assert delta.price == Decimal("300.50")
-    assert delta.quantity == Decimal("75")
+    assert delta.quantity == Decimal(75)
     assert delta.order_count == 2
     assert delta.trade_id is None
 
@@ -196,8 +196,8 @@ def test_trade_delta_has_no_side_or_order_count(
         DeltaType.TRADE,
         "AAPL",
         None,
-        Decimal("150"),
-        Decimal("50"),
+        Decimal(150),
+        Decimal(50),
         trade_id=trade_id,
     )
 

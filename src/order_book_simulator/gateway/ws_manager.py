@@ -3,7 +3,7 @@ from collections import defaultdict
 from typing import Any
 
 import orjson
-from fastapi import WebSocket
+from fastapi import WebSocket, WebSocketDisconnect
 from redis.asyncio import Redis
 
 
@@ -30,7 +30,7 @@ class ClientConnection:
             message: dict[str, Any] = await self.queue.get()
             try:
                 await self.websocket.send_json(message)
-            except Exception:
+            except RuntimeError, WebSocketDisconnect:
                 break
             self.queue.task_done()
 

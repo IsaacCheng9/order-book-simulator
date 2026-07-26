@@ -1,5 +1,5 @@
-from datetime import datetime, timedelta, timezone
-from typing import Any
+from datetime import UTC, datetime, timedelta
+from typing import Annotated, Any
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -28,7 +28,7 @@ analytics = MarketDataAnalytics(redis_client)
 
 @market_data_router.get("/global-trades-analytics")
 async def get_global_trade_analytics_endpoint(
-    since_hours: int = 24, db: AsyncSession = Depends(get_db)
+    db: Annotated[AsyncSession, Depends(get_db)], since_hours: int = 24
 ) -> dict[str, Any]:
     """
     Returns trade analytics across all stocks.
@@ -40,18 +40,20 @@ async def get_global_trade_analytics_endpoint(
     Returns:
         A dictionary containing global trade analytics.
     """
-    since_time = datetime.now(timezone.utc) - timedelta(hours=since_hours)
+    since_time = datetime.now(UTC) - timedelta(hours=since_hours)
     analytics_result = await get_global_trade_analytics(db, since=since_time)
 
     return {
-        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "timestamp": datetime.now(UTC).isoformat(),
         "period_hours": since_hours,
         "analytics": analytics_result,
     }
 
 
 @market_data_router.get("/stocks-with-orders")
-async def get_active_stocks(db: AsyncSession = Depends(get_db)) -> dict[str, Any]:
+async def get_active_stocks(
+    db: Annotated[AsyncSession, Depends(get_db)],
+) -> dict[str, Any]:
     """
     Returns a mapping of stock IDs to tickers for all stocks with active order books.
 
@@ -62,21 +64,23 @@ async def get_active_stocks(db: AsyncSession = Depends(get_db)) -> dict[str, Any
         A dictionary containing the stock_id -> ticker mapping and sorted tickers list.
     """
     order_books = await order_book_cache.get_all_order_books()
-    stock_ids = [UUID(id_) for id_ in order_books.keys()]
+    stock_ids = [UUID(id_) for id_ in order_books]
 
     # Get proper stock_id -> ticker mapping from database
     stock_id_to_ticker = await get_stock_id_ticker_mapping(stock_ids, db)
     tickers = list(stock_id_to_ticker.values())
 
     return {
-        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "timestamp": datetime.now(UTC).isoformat(),
         "tickers": sorted(tickers),
         "stock_id_to_ticker": stock_id_to_ticker,
     }
 
 
 @market_data_router.get("/stocks")
-async def get_all_stocks_endpoint(db: AsyncSession = Depends(get_db)) -> dict[str, Any]:
+async def get_all_stocks_endpoint(
+    db: Annotated[AsyncSession, Depends(get_db)],
+) -> dict[str, Any]:
     """
     Returns all stocks available in the database.
 
@@ -88,14 +92,14 @@ async def get_all_stocks_endpoint(db: AsyncSession = Depends(get_db)) -> dict[st
     """
     stocks = await get_all_stocks(db)
     return {
-        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "timestamp": datetime.now(UTC).isoformat(),
         "stocks": stocks,
     }
 
 
 @market_data_router.get("/trades")
 async def get_all_recent_trades(
-    limit: int = 100, db: AsyncSession = Depends(get_db)
+    db: Annotated[AsyncSession, Depends(get_db)], limit: int = 100
 ) -> dict[str, Any]:
     """
     Returns recent trades across all stocks.
@@ -110,7 +114,7 @@ async def get_all_recent_trades(
     trades = await get_recent_trades(db, limit=limit)
 
     return {
-        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "timestamp": datetime.now(UTC).isoformat(),
         "trades": trades,
         "count": len(trades),
     }
@@ -118,7 +122,9 @@ async def get_all_recent_trades(
 
 @market_data_router.get("/trades/{ticker}")
 async def get_stock_trades(
-    ticker: str, limit: int = 100, db: AsyncSession = Depends(get_db)
+    ticker: str,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    limit: int = 100,
 ) -> dict[str, Any]:
     """
     Returns recent trades for a specific stock.
@@ -140,7 +146,7 @@ async def get_stock_trades(
     trades = await get_trades_by_stock(stock.id, db, limit=limit)
 
     return {
-        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "timestamp": datetime.now(UTC).isoformat(),
         "ticker": ticker,
         "trades": trades,
         "count": len(trades),
@@ -149,7 +155,9 @@ async def get_stock_trades(
 
 @market_data_router.get("/trades/{ticker}/analytics")
 async def get_stock_trade_analytics(
-    ticker: str, since_hours: int = 24, db: AsyncSession = Depends(get_db)
+    ticker: str,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    since_hours: int = 24,
 ) -> dict[str, Any]:
     """
     Returns trade analytics for a specific stock.
@@ -168,7 +176,7 @@ async def get_stock_trade_analytics(
             status_code=404, detail=f"Couldn't find stock with ticker {ticker}"
         )
 
-    since_time = datetime.now(timezone.utc) - timedelta(hours=since_hours)
+    since_time = datetime.now(UTC) - timedelta(hours=since_hours)
     try:
         analytics = await get_trade_analytics_by_stock(stock.id, db, since=since_time)
     except ValueError:
@@ -177,7 +185,7 @@ async def get_stock_trade_analytics(
         )
 
     return {
-        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "timestamp": datetime.now(UTC).isoformat(),
         "ticker": ticker,
         "period_hours": since_hours,
         "analytics": analytics,
@@ -186,7 +194,7 @@ async def get_stock_trade_analytics(
 
 @market_data_router.get("/{ticker}")
 async def get_market_data(
-    ticker: str, db: AsyncSession = Depends(get_db)
+    ticker: str, db: Annotated[AsyncSession, Depends(get_db)]
 ) -> dict[str, Any]:
     """
     Returns current market data for a stock including:
@@ -218,7 +226,7 @@ async def get_market_data(
     vwap = await analytics.get_vwap(stock_id, window=timedelta(minutes=1))
 
     return {
-        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "timestamp": datetime.now(UTC).isoformat(),
         "ticker": ticker,
         "bid_depth": (
             str(depth_stats["bid_depth"])

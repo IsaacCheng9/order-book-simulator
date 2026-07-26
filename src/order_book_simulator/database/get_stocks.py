@@ -72,13 +72,12 @@ class StockLoader:
         self.get_stocks()
         logger.info(f"Total of {len(self.stocks)} stocks to process")
 
-        async with AsyncSessionLocal() as session:
-            async with session.begin():
-                try:
-                    for stock in self.stocks.values():
-                        try:
-                            await session.execute(
-                                text("""
+        async with AsyncSessionLocal() as session, session.begin():
+            try:
+                for stock in self.stocks.values():
+                    try:
+                        await session.execute(
+                            text("""
                                 INSERT INTO stock (
                                     id, ticker, company_name, min_order_size, 
                                     max_order_size, price_precision
@@ -92,17 +91,15 @@ class StockLoader:
                                     price_precision = EXCLUDED.price_precision,
                                     updated_at = CURRENT_TIMESTAMP
                                 """),
-                                stock,
-                            )
-                            logger.info(f"Initialised/updated stock {stock['ticker']}")
-                        except Exception as e:
-                            logger.error(
-                                f"Error processing stock {stock['ticker']}: {e}"
-                            )
-                            raise  # Re-raise to trigger rollback
-                except Exception as e:
-                    logger.error(f"Database transaction failed: {e}")
-                    raise  # Session.begin() will handle rollback
+                            stock,
+                        )
+                        logger.info(f"Initialised/updated stock {stock['ticker']}")
+                    except Exception as e:
+                        logger.error(f"Error processing stock {stock['ticker']}: {e}")
+                        raise  # Re-raise to trigger rollback
+            except Exception as e:
+                logger.error(f"Database transaction failed: {e}")
+                raise  # Session.begin() will handle rollback
 
 
 async def load_all_us_stocks():

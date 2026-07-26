@@ -52,7 +52,7 @@ class MulticastPublisher:
                     timeout=interval_seconds,
                 )
                 break
-            except asyncio.TimeoutError:
+            except TimeoutError:
                 # Interval elapsed - send next heartbeat.
                 continue
 

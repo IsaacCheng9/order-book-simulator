@@ -21,7 +21,7 @@ class FakeKafkaConsumer:
     """Provide a controllable Kafka consumer for DB consumer tests."""
 
     poll_results: ClassVar[list[Any]] = []
-    last_instance: ClassVar["FakeKafkaConsumer | None"] = None
+    last_instance: ClassVar[FakeKafkaConsumer | None] = None
 
     def __init__(self, *args: Any, **kwargs: Any) -> None:
         self.args = args

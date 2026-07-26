@@ -18,7 +18,7 @@ import asyncio
 import statistics
 import time
 from dataclasses import asdict
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from decimal import Decimal
 from unittest.mock import AsyncMock, MagicMock
 from uuid import uuid4
@@ -159,10 +159,10 @@ async def benchmark_publish_latency(
                 order = {
                     "id": uuid4(),
                     "price": Decimal(100 + idx % 50),
-                    "quantity": Decimal("100"),
+                    "quantity": Decimal(100),
                     "side": OrderSide.BUY,
                     "order_type": OrderType.LIMIT,
-                    "created_at": datetime.now(timezone.utc),
+                    "created_at": datetime.now(UTC),
                 }
                 seq_before = book.delta_buffer.current_sequence
                 start = time.perf_counter()
@@ -196,10 +196,10 @@ async def benchmark_publish_latency(
                 order = {
                     "id": uuid4(),
                     "price": Decimal(100 + idx % 50),
-                    "quantity": Decimal("100"),
+                    "quantity": Decimal(100),
                     "side": OrderSide.BUY,
                     "order_type": OrderType.LIMIT,
-                    "created_at": datetime.now(timezone.utc),
+                    "created_at": datetime.now(UTC),
                 }
                 seq_before = book.delta_buffer.current_sequence
                 start = time.perf_counter()

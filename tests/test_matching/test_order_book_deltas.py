@@ -1,4 +1,4 @@
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from decimal import Decimal
 from uuid import uuid4
 
@@ -21,7 +21,7 @@ def create_order(
         "quantity": quantity,
         "side": side,
         "order_type": "LIMIT",
-        "created_at": datetime.now(timezone.utc),
+        "created_at": datetime.now(UTC),
     }
 
 
@@ -34,7 +34,7 @@ def test_add_order_emits_level_update() -> None:
     """Tests that resting a limit order emits a LEVEL_UPDATE delta."""
     book = make_book()
     book.add_order(
-        create_order(price=Decimal("100"), quantity=Decimal("10")),
+        create_order(price=Decimal(100), quantity=Decimal(10)),
     )
 
     deltas = book.delta_buffer.get_deltas_since(0)
@@ -44,8 +44,8 @@ def test_add_order_emits_level_update() -> None:
     d = deltas[0]
     assert d.delta_type == DeltaType.LEVEL_UPDATE
     assert d.side == OrderSide.BUY
-    assert d.price == Decimal("100")
-    assert d.quantity == Decimal("10")
+    assert d.price == Decimal(100)
+    assert d.quantity == Decimal(10)
     assert d.order_count == 1
 
 
@@ -55,10 +55,10 @@ def test_add_two_orders_same_level_emits_correct_quantity() -> None:
     """
     book = make_book()
     book.add_order(
-        create_order(price=Decimal("100"), quantity=Decimal("10")),
+        create_order(price=Decimal(100), quantity=Decimal(10)),
     )
     book.add_order(
-        create_order(price=Decimal("100"), quantity=Decimal("5")),
+        create_order(price=Decimal(100), quantity=Decimal(5)),
     )
 
     deltas = book.delta_buffer.get_deltas_since(1)
@@ -67,7 +67,7 @@ def test_add_two_orders_same_level_emits_correct_quantity() -> None:
 
     d = deltas[0]
     assert d.delta_type == DeltaType.LEVEL_UPDATE
-    assert d.quantity == Decimal("15")
+    assert d.quantity == Decimal(15)
     assert d.order_count == 2
 
 
@@ -78,8 +78,8 @@ def test_full_match_emits_trade_and_level_remove() -> None:
     book = make_book()
     book.add_order(
         create_order(
-            price=Decimal("100"),
-            quantity=Decimal("10"),
+            price=Decimal(100),
+            quantity=Decimal(10),
             side=OrderSide.SELL,
         ),
     )
@@ -87,7 +87,7 @@ def test_full_match_emits_trade_and_level_remove() -> None:
     seq_before = book.delta_buffer.current_sequence
 
     book.add_order(
-        create_order(price=Decimal("100"), quantity=Decimal("10")),
+        create_order(price=Decimal(100), quantity=Decimal(10)),
     )
 
     deltas = book.delta_buffer.get_deltas_since(seq_before)
@@ -97,15 +97,15 @@ def test_full_match_emits_trade_and_level_remove() -> None:
     remove_deltas = [d for d in deltas if d.delta_type == DeltaType.LEVEL_REMOVE]
 
     assert len(trade_deltas) == 1
-    assert trade_deltas[0].price == Decimal("100")
-    assert trade_deltas[0].quantity == Decimal("10")
+    assert trade_deltas[0].price == Decimal(100)
+    assert trade_deltas[0].quantity == Decimal(10)
     assert trade_deltas[0].side is None
     assert trade_deltas[0].trade_id is not None
 
     assert len(remove_deltas) == 1
     assert remove_deltas[0].side == OrderSide.SELL
-    assert remove_deltas[0].price == Decimal("100")
-    assert remove_deltas[0].quantity == Decimal("0")
+    assert remove_deltas[0].price == Decimal(100)
+    assert remove_deltas[0].quantity == Decimal(0)
     assert remove_deltas[0].order_count == 0
 
 
@@ -116,15 +116,15 @@ def test_partial_match_emits_trade_and_level_update() -> None:
     book = make_book()
     book.add_order(
         create_order(
-            price=Decimal("100"),
-            quantity=Decimal("10"),
+            price=Decimal(100),
+            quantity=Decimal(10),
             side=OrderSide.SELL,
         ),
     )
     seq_before = book.delta_buffer.current_sequence
 
     book.add_order(
-        create_order(price=Decimal("100"), quantity=Decimal("3")),
+        create_order(price=Decimal(100), quantity=Decimal(3)),
     )
 
     deltas = book.delta_buffer.get_deltas_since(seq_before)
@@ -134,11 +134,11 @@ def test_partial_match_emits_trade_and_level_update() -> None:
     update_deltas = [d for d in deltas if d.delta_type == DeltaType.LEVEL_UPDATE]
 
     assert len(trade_deltas) == 1
-    assert trade_deltas[0].quantity == Decimal("3")
+    assert trade_deltas[0].quantity == Decimal(3)
 
     assert len(update_deltas) == 1
     assert update_deltas[0].side == OrderSide.SELL
-    assert update_deltas[0].quantity == Decimal("7")
+    assert update_deltas[0].quantity == Decimal(7)
     assert update_deltas[0].order_count == 1
 
 
@@ -147,7 +147,7 @@ def test_cancel_last_order_emits_level_remove() -> None:
     LEVEL_REMOVE.
     """
     book = make_book()
-    order = create_order(price=Decimal("100"), quantity=Decimal("10"))
+    order = create_order(price=Decimal(100), quantity=Decimal(10))
     book.add_order(order)
     seq_before = book.delta_buffer.current_sequence
 
@@ -160,8 +160,8 @@ def test_cancel_last_order_emits_level_remove() -> None:
     d = deltas[0]
     assert d.delta_type == DeltaType.LEVEL_REMOVE
     assert d.side == OrderSide.BUY
-    assert d.price == Decimal("100")
-    assert d.quantity == Decimal("0")
+    assert d.price == Decimal(100)
+    assert d.quantity == Decimal(0)
     assert d.order_count == 0
 
 
@@ -170,8 +170,8 @@ def test_cancel_one_of_two_orders_emits_level_update() -> None:
     LEVEL_UPDATE with the remaining aggregate.
     """
     book = make_book()
-    order1 = create_order(price=Decimal("100"), quantity=Decimal("10"))
-    order2 = create_order(price=Decimal("100"), quantity=Decimal("5"))
+    order1 = create_order(price=Decimal(100), quantity=Decimal(10))
+    order2 = create_order(price=Decimal(100), quantity=Decimal(5))
     book.add_order(order1)
     book.add_order(order2)
     seq_before = book.delta_buffer.current_sequence
@@ -184,7 +184,7 @@ def test_cancel_one_of_two_orders_emits_level_update() -> None:
 
     d = deltas[0]
     assert d.delta_type == DeltaType.LEVEL_UPDATE
-    assert d.quantity == Decimal("5")
+    assert d.quantity == Decimal(5)
     assert d.order_count == 1
 
 
@@ -206,22 +206,22 @@ def test_match_across_multiple_levels_emits_correct_deltas() -> None:
     book = make_book()
     book.add_order(
         create_order(
-            price=Decimal("100"),
-            quantity=Decimal("5"),
+            price=Decimal(100),
+            quantity=Decimal(5),
             side=OrderSide.SELL,
         ),
     )
     book.add_order(
         create_order(
-            price=Decimal("101"),
-            quantity=Decimal("5"),
+            price=Decimal(101),
+            quantity=Decimal(5),
             side=OrderSide.SELL,
         ),
     )
     seq_before = book.delta_buffer.current_sequence
 
     book.add_order(
-        create_order(price=Decimal("101"), quantity=Decimal("10")),
+        create_order(price=Decimal(101), quantity=Decimal(10)),
     )
 
     deltas = book.delta_buffer.get_deltas_since(seq_before)
@@ -231,12 +231,12 @@ def test_match_across_multiple_levels_emits_correct_deltas() -> None:
     remove_deltas = [d for d in deltas if d.delta_type == DeltaType.LEVEL_REMOVE]
 
     assert len(trade_deltas) == 2
-    assert trade_deltas[0].price == Decimal("100")
-    assert trade_deltas[1].price == Decimal("101")
+    assert trade_deltas[0].price == Decimal(100)
+    assert trade_deltas[1].price == Decimal(101)
 
     assert len(remove_deltas) == 2
-    assert remove_deltas[0].price == Decimal("100")
-    assert remove_deltas[1].price == Decimal("101")
+    assert remove_deltas[0].price == Decimal(100)
+    assert remove_deltas[1].price == Decimal(101)
 
 
 def test_sequence_numbers_are_monotonic_across_operations() -> None:
@@ -246,12 +246,12 @@ def test_sequence_numbers_are_monotonic_across_operations() -> None:
     book = make_book()
     book.add_order(
         create_order(
-            price=Decimal("100"),
-            quantity=Decimal("10"),
+            price=Decimal(100),
+            quantity=Decimal(10),
             side=OrderSide.SELL,
         ),
     )
-    order = create_order(price=Decimal("100"), quantity=Decimal("5"))
+    order = create_order(price=Decimal(100), quantity=Decimal(5))
     book.add_order(order)
 
     deltas = book.delta_buffer.get_deltas_since(0)

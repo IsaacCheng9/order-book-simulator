@@ -5,6 +5,7 @@ from uuid import UUID
 
 import orjson
 from aiokafka import AIOKafkaProducer
+from aiokafka.errors import KafkaError
 from fastapi import HTTPException
 
 from order_book_simulator.common.models import OrderRecord
@@ -107,7 +108,7 @@ class OrderProducer:
             "order_id": str(order_id),
             "stock_id": str(stock_id),
             "ticker": ticker,
-            "cancelled_at": datetime.datetime.now(datetime.timezone.utc).isoformat(),
+            "cancelled_at": datetime.datetime.now(datetime.UTC).isoformat(),
         }
         logger.info(f"Publishing cancellation for order: {order_id}")
 
@@ -119,7 +120,7 @@ class OrderProducer:
             logger.info(
                 f"Order cancellation for {order_id} successfully published to Kafka"
             )
-        except Exception as exc:
+        except KafkaError as exc:
             logger.error(f"Failed to publish cancellation to Kafka: {exc}")
             raise HTTPException(
                 status_code=500,
@@ -171,7 +172,7 @@ class OrderProducer:
                 orjson.dumps(kafka_record),
             )
             logger.info(f"Order {kafka_record['id']} successfully published to Kafka")
-        except Exception as e:
+        except KafkaError as e:
             logger.error(f"Failed to publish order to Kafka: {e}")
             raise HTTPException(
                 status_code=500,
@@ -195,6 +196,6 @@ class OrderProducer:
                 partition=0,
             )
             return True
-        except Exception as e:
+        except KafkaError as e:
             logger.error(f"Kafka health check failed: {e}")
             return False

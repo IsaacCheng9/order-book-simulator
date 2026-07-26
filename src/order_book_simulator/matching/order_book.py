@@ -167,7 +167,7 @@ class OrderBook:
         if order_type not in self.SUPPORTED_ORDER_TYPES:
             raise ValueError(f"{order_type.value} orders are not supported.")
 
-        if not quantity.is_finite() or quantity <= Decimal("0"):
+        if not quantity.is_finite() or quantity <= Decimal(0):
             raise ValueError("Order quantity must be positive.")
 
         if order_type == OrderType.MARKET:
@@ -178,7 +178,7 @@ class OrderBook:
         if price is None:
             raise ValueError("Limit orders must have a price.")
 
-        if not price.is_finite() or price <= Decimal("0"):
+        if not price.is_finite() or price <= Decimal(0):
             raise ValueError("Limit order price must be positive.")
 
     def add_order(self, order: dict[str, Any]) -> list[dict]:

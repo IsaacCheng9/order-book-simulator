@@ -12,7 +12,7 @@ SUPPORTED_ORDER_TYPES = frozenset({OrderType.LIMIT, OrderType.MARKET})
 
 def _has_valid_price_precision(price: Decimal, price_precision: int) -> bool:
     """Return whether a price is on the stock's configured tick size."""
-    tick_size = Decimal("1").scaleb(-price_precision)
+    tick_size = Decimal(1).scaleb(-price_precision)
     return price == price.quantize(tick_size)
 
 
@@ -46,7 +46,7 @@ async def validate_order(order_request: OrderRequest, db: AsyncSession) -> Stock
 
     # Validate order size. US equity share quantities must be positive whole
     # numbers in this simulator.
-    if not order_request.quantity.is_finite() or order_request.quantity <= Decimal("0"):
+    if not order_request.quantity.is_finite() or order_request.quantity <= Decimal(0):
         raise HTTPException(
             status_code=400,
             detail="Order quantity must be positive",
@@ -82,7 +82,7 @@ async def validate_order(order_request: OrderRequest, db: AsyncSession) -> Stock
     if order_request.price is None:
         raise HTTPException(status_code=400, detail="Limit orders must specify a price")
 
-    if not order_request.price.is_finite() or order_request.price <= Decimal("0"):
+    if not order_request.price.is_finite() or order_request.price <= Decimal(0):
         raise HTTPException(
             status_code=400,
             detail="Limit order price must be positive",

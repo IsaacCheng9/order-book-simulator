@@ -54,7 +54,7 @@ def create_order(
         "stock_id": str(stock_id),
         "ticker": "TEST",
         "price": price,
-        "quantity": Decimal("100"),
+        "quantity": Decimal(100),
         "side": side,
         "order_type": OrderType.LIMIT,
     }
@@ -150,7 +150,7 @@ async def benchmark_matching(num_orders: int = 1_000, batch_size: int = 50) -> f
     """
     engine, producer, redis_client = await create_engine()
     stock_id = uuid4()
-    price = Decimal("100")
+    price = Decimal(100)
 
     orders = [
         create_order(stock_id, price, OrderSide.BUY if i % 2 == 0 else OrderSide.SELL)

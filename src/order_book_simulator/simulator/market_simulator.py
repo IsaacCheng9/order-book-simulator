@@ -2,9 +2,9 @@ import asyncio
 import logging
 import multiprocessing as mp
 import time
+from collections.abc import Awaitable, Callable
 from decimal import Decimal
 from inspect import isawaitable
-from typing import Awaitable, Callable
 
 import aiohttp
 import orjson
@@ -288,7 +288,8 @@ class MarketSimulator:
                 success = await result if isawaitable(result) else result
                 if success:
                     self.stats.record_order()
-            except Exception as e:
+            except Exception as e:  # noqa: BLE001
+                # Keep one injected handler failure from terminating the worker.
                 logger.error(f"Worker {worker_id} error processing order: {e}")
             finally:
                 self.order_queue.task_done()
@@ -350,7 +351,7 @@ class MarketSimulator:
                 },
             ) as response:
                 return response.status == 200
-        except Exception as e:
+        except (TimeoutError, aiohttp.ClientError) as e:
             logger.error(f"Error sending order: {e}")
             return False
 
@@ -375,7 +376,7 @@ class MarketSimulator:
                     lambda order, sess: self._send_order_http(order, sess, api_url),
                     session,
                 )
-            except Exception as e:
+            except (TimeoutError, aiohttp.ClientError, RuntimeError) as e:
                 logger.error(f"Failed to connect to server: {e}")
                 raise
 

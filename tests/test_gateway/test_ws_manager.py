@@ -2,6 +2,7 @@ import asyncio
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
+from fastapi import WebSocketDisconnect
 
 from order_book_simulator.gateway import ws_manager as ws_manager_module
 from order_book_simulator.gateway.ws_manager import (
@@ -189,7 +190,7 @@ async def test_client_connection_enqueue_full_queue():
 async def test_client_connection_send_loop_exits_on_dead_ws():
     """Tests that the sender task exits when send_json raises."""
     ws = _mock_ws()
-    ws.send_json.side_effect = Exception("connection closed")
+    ws.send_json.side_effect = WebSocketDisconnect()
     client = ClientConnection(ws)
 
     client.enqueue({"type": "deltas"})
