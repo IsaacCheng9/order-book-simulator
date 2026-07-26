@@ -414,3 +414,82 @@ async def test_start_commits_malformed_messages_without_persisting(
     assert fake_consumer.commits == [{topic_partition: 9}]
     assert "Skipping malformed market data Kafka message" in caplog.text
     mock_db.persist_snapshot.assert_not_called()
+
+
+@pytest.mark.parametrize(
+    "skipped_value",
+    [None, b"not json"],
+    ids=["empty", "malformed"],
+)
+@pytest.mark.asyncio
+async def test_start_defers_skipped_offset_until_buffered_record_is_persisted(
+    skipped_value: bytes | None,
+    mock_db,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    """Commit a skipped record only after earlier buffered data is durable."""
+    consumer = MarketDataDBConsumer(
+        batch_size=50,
+        batch_timeout_ms=60_000,
+        max_flush_retries=1,
+        retry_backoff_ms=0,
+    )
+    topic_partition = TopicPartition("market-data", 0)
+    valid_payload = orjson.dumps(create_market_data())
+    use_fake_kafka(
+        monkeypatch,
+        [
+            {
+                topic_partition: [
+                    make_record(valid_payload, offset=5),
+                    make_record(skipped_value, offset=6),
+                ]
+            },
+            StopPolling(),
+        ],
+    )
+
+    with pytest.raises(StopPolling):
+        await consumer.start()
+
+    fake_consumer = FakeKafkaConsumer.last_instance
+    assert fake_consumer is not None
+    mock_db.persist_snapshot.assert_awaited_once()
+    assert fake_consumer.commits == [{topic_partition: 7}]
+
+
+@pytest.mark.asyncio
+async def test_start_retains_skipped_offset_when_earlier_persistence_fails(
+    mock_db,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    """Leave skipped and buffered records uncommitted after a database failure."""
+    consumer = MarketDataDBConsumer(
+        batch_size=50,
+        batch_timeout_ms=60_000,
+        max_flush_retries=1,
+        retry_backoff_ms=0,
+    )
+    topic_partition = TopicPartition("market-data", 0)
+    valid_payload = orjson.dumps(create_market_data())
+    mock_db.persist_snapshot.side_effect = RuntimeError("database unavailable")
+    use_fake_kafka(
+        monkeypatch,
+        [
+            {
+                topic_partition: [
+                    make_record(valid_payload, offset=5),
+                    make_record(b"not json", offset=6),
+                ]
+            },
+            StopPolling(),
+        ],
+    )
+
+    with pytest.raises(RuntimeError, match="database unavailable"):
+        await consumer.start()
+
+    fake_consumer = FakeKafkaConsumer.last_instance
+    assert fake_consumer is not None
+    assert fake_consumer.commits == []
+    assert consumer.pending_offsets == {topic_partition: 7}

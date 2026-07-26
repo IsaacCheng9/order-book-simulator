@@ -105,18 +105,30 @@ class MarketDataDBConsumer:
         topic_partition = TopicPartition(message.topic, message.partition)
         await self._commit_offsets({topic_partition: message.offset + 1})
 
-    def _add_to_batch(
-        self,
-        data: dict[str, Any],
-        message: ConsumerRecord,
-    ) -> None:
-        self.batch.append(data)
+    async def _acknowledge_skipped_message(self, message: ConsumerRecord) -> None:
+        """Acknowledge a skipped record without committing past buffered data."""
+        topic_partition = TopicPartition(message.topic, message.partition)
+        if topic_partition in self.pending_offsets:
+            self._track_pending_offset(message)
+            return
+
+        await self._commit_message_offset(message)
+
+    def _track_pending_offset(self, message: ConsumerRecord) -> None:
         topic_partition = TopicPartition(message.topic, message.partition)
         next_offset = message.offset + 1
         self.pending_offsets[topic_partition] = max(
             next_offset,
             self.pending_offsets.get(topic_partition, 0),
         )
+
+    def _add_to_batch(
+        self,
+        data: dict[str, Any],
+        message: ConsumerRecord,
+    ) -> None:
+        self.batch.append(data)
+        self._track_pending_offset(message)
 
     def _should_flush(self) -> bool:
         return bool(self.batch) and (
@@ -180,11 +192,11 @@ class MarketDataDBConsumer:
                             data = self._decode_message(message)
                         except MALFORMED_MESSAGE_ERRORS as exc:
                             self._log_skipped_message(message, exc)
-                            await self._commit_message_offset(message)
+                            await self._acknowledge_skipped_message(message)
                             continue
 
                         if data is None:
-                            await self._commit_message_offset(message)
+                            await self._acknowledge_skipped_message(message)
                             continue
 
                         self._add_to_batch(data, message)
