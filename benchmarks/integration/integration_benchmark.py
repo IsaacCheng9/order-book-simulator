@@ -15,6 +15,7 @@ docker compose down -v
 """
 
 import asyncio
+import os
 import time
 from decimal import Decimal
 from typing import Any
@@ -27,6 +28,11 @@ from order_book_simulator.common.cache import order_book_cache
 from order_book_simulator.common.models import OrderSide, OrderType
 from order_book_simulator.market_data.analytics import MarketDataAnalytics
 from order_book_simulator.matching.matching_engine import MatchingEngine
+
+KAFKA_BOOTSTRAP_SERVERS = os.getenv(
+    "KAFKA_BOOTSTRAP_SERVERS",
+    "localhost:29092",
+)
 
 
 def create_order(
@@ -50,16 +56,16 @@ def create_order(
         "price": price,
         "quantity": Decimal(100),
         "side": side,
-        "type": OrderType.LIMIT,
+        "order_type": OrderType.LIMIT,
     }
 
 
-async def create_engine() -> tuple[MatchingEngine, AIOKafkaProducer]:
+async def create_engine() -> tuple[MatchingEngine, AIOKafkaProducer, Redis]:
     """
     Creates a MatchingEngine with real Redis and Kafka.
 
     Returns:
-        A tuple of (MatchingEngine, AIOKafkaProducer).
+        A tuple of the matching engine and its external clients.
     """
     # Use real async Redis.
     redis_client = Redis.from_url("redis://localhost:6379/1")
@@ -68,16 +74,28 @@ async def create_engine() -> tuple[MatchingEngine, AIOKafkaProducer]:
 
     # Use real Kafka producer.
     producer = AIOKafkaProducer(
-        bootstrap_servers="localhost:9092",
+        bootstrap_servers=KAFKA_BOOTSTRAP_SERVERS,
         compression_type="gzip",
     )
-    await producer.start()
+    try:
+        await producer.start()
 
-    # Use real analytics with async Redis.
-    analytics = MarketDataAnalytics(redis_client)
+        # Use real analytics with async Redis.
+        analytics = MarketDataAnalytics(redis_client)
 
-    engine = MatchingEngine(producer, analytics)
-    return engine, producer
+        engine = MatchingEngine(producer, analytics)
+        return engine, producer, redis_client
+    except Exception:
+        await close_clients(producer, redis_client)
+        raise
+
+
+async def close_clients(producer: AIOKafkaProducer, redis_client: Redis) -> None:
+    """Close the benchmark's external clients."""
+    try:
+        await producer.stop()
+    finally:
+        await redis_client.aclose()
 
 
 async def benchmark_insertion(num_orders: int = 1_000, batch_size: int = 50) -> float:
@@ -92,7 +110,7 @@ async def benchmark_insertion(num_orders: int = 1_000, batch_size: int = 50) -> 
     Returns:
         The number of orders processed per second.
     """
-    engine, producer = await create_engine()
+    engine, producer, redis_client = await create_engine()
     stock_id = uuid4()
 
     orders = [
@@ -100,13 +118,14 @@ async def benchmark_insertion(num_orders: int = 1_000, batch_size: int = 50) -> 
         for i in range(num_orders)
     ]
 
-    start = time.perf_counter()
-    for index in range(0, len(orders), batch_size):
-        batch = orders[index : index + batch_size]
-        await asyncio.gather(*[engine.process_order(order) for order in batch])
-    elapsed = time.perf_counter() - start
-
-    await producer.stop()
+    try:
+        start = time.perf_counter()
+        for index in range(0, len(orders), batch_size):
+            batch = orders[index : index + batch_size]
+            await asyncio.gather(*[engine.process_order(order) for order in batch])
+        elapsed = time.perf_counter() - start
+    finally:
+        await close_clients(producer, redis_client)
 
     orders_per_second = num_orders / elapsed
     print(
@@ -129,7 +148,7 @@ async def benchmark_matching(num_orders: int = 1_000, batch_size: int = 50) -> f
     Returns:
         The number of orders processed per second.
     """
-    engine, producer = await create_engine()
+    engine, producer, redis_client = await create_engine()
     stock_id = uuid4()
     price = Decimal(100)
 
@@ -138,13 +157,14 @@ async def benchmark_matching(num_orders: int = 1_000, batch_size: int = 50) -> f
         for i in range(num_orders)
     ]
 
-    start = time.perf_counter()
-    for index in range(0, len(orders), batch_size):
-        batch = orders[index : index + batch_size]
-        await asyncio.gather(*[engine.process_order(order) for order in batch])
-    elapsed = time.perf_counter() - start
-
-    await producer.stop()
+    try:
+        start = time.perf_counter()
+        for index in range(0, len(orders), batch_size):
+            batch = orders[index : index + batch_size]
+            await asyncio.gather(*[engine.process_order(order) for order in batch])
+        elapsed = time.perf_counter() - start
+    finally:
+        await close_clients(producer, redis_client)
 
     orders_per_second = num_orders / elapsed
     print(
@@ -170,7 +190,7 @@ async def benchmark_deep_book(
     Returns:
         The number of orders processed per second.
     """
-    engine, producer = await create_engine()
+    engine, producer, redis_client = await create_engine()
     stock_id = uuid4()
     total_orders = num_levels * orders_per_level
 
@@ -179,13 +199,14 @@ async def benchmark_deep_book(
         for i in range(total_orders)
     ]
 
-    start = time.perf_counter()
-    for index in range(0, len(orders), batch_size):
-        batch = orders[index : index + batch_size]
-        await asyncio.gather(*[engine.process_order(order) for order in batch])
-    elapsed = time.perf_counter() - start
-
-    await producer.stop()
+    try:
+        start = time.perf_counter()
+        for index in range(0, len(orders), batch_size):
+            batch = orders[index : index + batch_size]
+            await asyncio.gather(*[engine.process_order(order) for order in batch])
+        elapsed = time.perf_counter() - start
+    finally:
+        await close_clients(producer, redis_client)
 
     orders_per_second = total_orders / elapsed
     print(
