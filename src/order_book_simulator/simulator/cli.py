@@ -79,8 +79,8 @@ async def run_simulation(args: argparse.Namespace) -> None:
     simulator = MarketSimulator(
         tickers=tickers,
         base_prices=DEFAULT_STOCK_PRICES,
-        min_order_sizes={ticker: Decimal("1") for ticker in tickers},
-        max_order_sizes={ticker: Decimal("100") for ticker in tickers},
+        min_order_sizes={ticker: Decimal(1) for ticker in tickers},
+        max_order_sizes={ticker: Decimal(100) for ticker in tickers},
         initial_orders_per_second=args.orders_per_second,
         rate_mode=args.rate_mode,
         num_workers=args.workers,

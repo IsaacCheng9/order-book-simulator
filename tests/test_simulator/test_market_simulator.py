@@ -15,8 +15,8 @@ async def test_run_with_http_propagates_connection_failure(
     simulator = MarketSimulator(
         tickers=["TEST"],
         base_prices={"TEST": 100.0},
-        min_order_sizes={"TEST": Decimal("1")},
-        max_order_sizes={"TEST": Decimal("100")},
+        min_order_sizes={"TEST": Decimal(1)},
+        max_order_sizes={"TEST": Decimal(100)},
         num_workers=1,
         num_producers=1,
     )

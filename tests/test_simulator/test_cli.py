@@ -30,8 +30,8 @@ async def test_run_simulation_maps_cli_arguments_to_simulator(
     simulator_class.assert_called_once_with(
         tickers=list(cli.DEFAULT_STOCK_PRICES),
         base_prices=cli.DEFAULT_STOCK_PRICES,
-        min_order_sizes={ticker: Decimal("1") for ticker in cli.DEFAULT_STOCK_PRICES},
-        max_order_sizes={ticker: Decimal("100") for ticker in cli.DEFAULT_STOCK_PRICES},
+        min_order_sizes={ticker: Decimal(1) for ticker in cli.DEFAULT_STOCK_PRICES},
+        max_order_sizes={ticker: Decimal(100) for ticker in cli.DEFAULT_STOCK_PRICES},
         initial_orders_per_second=250,
         rate_mode="fixed",
         num_workers=3,
