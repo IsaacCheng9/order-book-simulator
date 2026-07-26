@@ -15,8 +15,8 @@ def _make_delta(
     seq: int,
     delta_type: DeltaType = DeltaType.LEVEL_UPDATE,
     side: OrderSide = OrderSide.BUY,
-    price: Decimal = Decimal("100"),
-    quantity: Decimal = Decimal("50"),
+    price: Decimal = Decimal(100),
+    quantity: Decimal = Decimal(50),
 ) -> Delta:
     """Creates a Delta with the given sequence number."""
     return Delta(
@@ -134,7 +134,7 @@ async def test_store_deltas_preserves_trade_fields():
         ticker="TEST",
         side=None,
         price=Decimal("150.50"),
-        quantity=Decimal("25"),
+        quantity=Decimal(25),
         trade_id=trade_id,
     )
     await order_book_cache.store_deltas(stock_id, [delta])

@@ -18,8 +18,8 @@ def _stock(price_precision: int = 2) -> SimpleNamespace:
     return SimpleNamespace(
         id=uuid4(),
         ticker="AAPL",
-        min_order_size=Decimal("1"),
-        max_order_size=Decimal("1000"),
+        min_order_size=Decimal(1),
+        max_order_size=Decimal(1000),
         price_precision=price_precision,
     )
 
@@ -27,7 +27,7 @@ def _stock(price_precision: int = 2) -> SimpleNamespace:
 def _order(
     order_type: OrderType = OrderType.LIMIT,
     price: Decimal | None = Decimal("100.00"),
-    quantity: Decimal = Decimal("10"),
+    quantity: Decimal = Decimal(10),
 ) -> OrderRequest:
     """Create a valid base order request for validation tests."""
     return OrderRequest(
@@ -91,7 +91,7 @@ async def test_validate_order_rejects_stop_orders(stock_lookup):
 async def test_validate_order_rejects_market_orders_with_price(stock_lookup):
     """Rejects market orders that incorrectly provide a price."""
     with pytest.raises(HTTPException) as exc_info:
-        await validate_order(_order(OrderType.MARKET, price=Decimal("100")), db=_db())
+        await validate_order(_order(OrderType.MARKET, price=Decimal(100)), db=_db())
 
     assert exc_info.value.status_code == 400
     assert exc_info.value.detail == "Market orders must not specify a price"
@@ -108,7 +108,7 @@ async def test_validate_order_rejects_limit_orders_without_price(stock_lookup):
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("price", [Decimal("0"), Decimal("-1")])
+@pytest.mark.parametrize("price", [Decimal(0), Decimal(-1)])
 async def test_validate_order_rejects_non_positive_limit_price(
     stock_lookup,
     price: Decimal,
@@ -136,7 +136,7 @@ async def test_validate_order_rejects_invalid_price_precision(stock_lookup):
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("quantity", [Decimal("0"), Decimal("-1")])
+@pytest.mark.parametrize("quantity", [Decimal(0), Decimal(-1)])
 async def test_validate_order_rejects_non_positive_quantity(
     stock_lookup,
     quantity: Decimal,

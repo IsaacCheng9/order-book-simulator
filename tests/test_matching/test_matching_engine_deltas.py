@@ -1,4 +1,4 @@
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from decimal import Decimal
 from typing import Any
 from uuid import UUID, uuid4
@@ -13,8 +13,8 @@ from order_book_simulator.matching.matching_engine import MatchingEngine
 def create_order(
     stock_id: UUID,
     side: OrderSide = OrderSide.BUY,
-    price: Decimal = Decimal("100"),
-    quantity: Decimal = Decimal("10"),
+    price: Decimal = Decimal(100),
+    quantity: Decimal = Decimal(10),
 ) -> dict[str, Any]:
     """Creates a test order with the specified stock ID."""
     return {
@@ -25,7 +25,7 @@ def create_order(
         "quantity": quantity,
         "side": side,
         "order_type": OrderType.LIMIT,
-        "created_at": datetime.now(timezone.utc),
+        "created_at": datetime.now(UTC),
     }
 
 

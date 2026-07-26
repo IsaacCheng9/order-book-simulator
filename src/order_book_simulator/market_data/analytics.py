@@ -1,6 +1,7 @@
-from datetime import datetime, timedelta, timezone
+from collections.abc import AsyncGenerator
+from datetime import UTC, datetime, timedelta
 from decimal import Decimal
-from typing import Any, AsyncGenerator, cast
+from typing import Any, cast
 from uuid import UUID
 
 import polars as pl
@@ -108,7 +109,7 @@ class MarketDataAnalytics:
         best_bid = max(bid_levels, key=lambda x: x.price).price if bid_levels else None
         best_ask = min(ask_levels, key=lambda x: x.price).price if ask_levels else None
 
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         market_data: dict[str, Any] = {
             "timestamp": now.isoformat(),
             "mid_price": str((best_bid + best_ask) / 2)
@@ -144,7 +145,7 @@ class MarketDataAnalytics:
             VWAP for the stock over the time window.
         """
         # Calculate start time in milliseconds
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         start_time = int((now - window).timestamp() * 1000)
 
         # Format stream IDs properly for Redis
@@ -201,17 +202,17 @@ class MarketDataAnalytics:
         return {
             "bid_depth": Decimal(entry["bid_depth"])
             if entry["bid_depth"]
-            else Decimal("0"),
+            else Decimal(0),
             "ask_depth": Decimal(entry["ask_depth"])
             if entry["ask_depth"]
-            else Decimal("0"),
+            else Decimal(0),
             "spread": Decimal(entry["spread"]) if entry["spread"] else None,
             "mid_price": Decimal(entry["mid_price"]) if entry["mid_price"] else None,
         }
 
     async def get_analytics_stream(
         self, stock_id: UUID, batch_size: int = 100
-    ) -> AsyncGenerator[pl.DataFrame, None]:
+    ) -> AsyncGenerator[pl.DataFrame]:
         """
         Creates a real-time analytics stream using Redis Streams.
 

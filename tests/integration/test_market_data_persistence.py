@@ -99,10 +99,9 @@ async def test_persist_batch_stores_jsonb_snapshot_and_trade(
         )
     )
 
-    async with postgres_session_factory() as session:
-        async with session.begin():
-            await session.execute(
-                text("""
+    async with postgres_session_factory() as session, session.begin():
+        await session.execute(
+            text("""
                     INSERT INTO stock (
                         id, ticker, company_name, min_order_size,
                         max_order_size, price_precision
@@ -112,15 +111,15 @@ async def test_persist_batch_stores_jsonb_snapshot_and_trade(
                         :max_order_size, :price_precision
                     )
                 """),
-                {
-                    "id": stock_id,
-                    "ticker": "TEST",
-                    "company_name": "Test Company",
-                    "min_order_size": 1,
-                    "max_order_size": 1000,
-                    "price_precision": 2,
-                },
-            )
+            {
+                "id": stock_id,
+                "ticker": "TEST",
+                "company_name": "Test Company",
+                "min_order_size": 1,
+                "max_order_size": 1000,
+                "price_precision": 2,
+            },
+        )
 
     consumer = MarketDataDBConsumer()
     await consumer._persist_batch([snapshot])

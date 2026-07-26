@@ -1,4 +1,4 @@
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import streamlit as st
 
@@ -82,9 +82,7 @@ def main():
     st.session_state.auto_refresh_enabled = auto_refresh_enabled
 
     # Last update time
-    st.sidebar.info(
-        f"Last Updated: {datetime.now(timezone.utc).strftime('%H:%M:%S')} UTC"
-    )
+    st.sidebar.info(f"Last Updated: {datetime.now(UTC).strftime('%H:%M:%S')} UTC")
 
     if gateway_connected:
         st.sidebar.success("✅ Gateway Connected")

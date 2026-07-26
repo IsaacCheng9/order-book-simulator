@@ -23,7 +23,7 @@ import asyncio
 import statistics
 import time
 from dataclasses import asdict
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from decimal import Decimal
 from unittest.mock import AsyncMock
 from uuid import uuid4
@@ -169,10 +169,10 @@ async def benchmark_push_latency(
                 order = {
                     "id": uuid4(),
                     "price": Decimal(100 + i % 50),
-                    "quantity": Decimal("100"),
+                    "quantity": Decimal(100),
                     "side": OrderSide.BUY,
                     "order_type": OrderType.LIMIT,
-                    "created_at": datetime.now(timezone.utc),
+                    "created_at": datetime.now(UTC),
                 }
 
                 # Measure the full path: add order, extract
@@ -242,10 +242,10 @@ async def benchmark_push_vs_polling(
             order = {
                 "id": uuid4(),
                 "price": Decimal(100 + i % 50),
-                "quantity": Decimal("100"),
+                "quantity": Decimal(100),
                 "side": OrderSide.BUY,
                 "order_type": OrderType.LIMIT,
-                "created_at": datetime.now(timezone.utc),
+                "created_at": datetime.now(UTC),
             }
             seq_before = book.delta_buffer.current_sequence
             start = time.perf_counter()
@@ -304,20 +304,20 @@ async def benchmark_snapshot_vs_delta_bandwidth(
             {
                 "id": uuid4(),
                 "price": Decimal(100 + i % 20),
-                "quantity": Decimal("100"),
+                "quantity": Decimal(100),
                 "side": OrderSide.BUY,
                 "order_type": OrderType.LIMIT,
-                "created_at": datetime.now(timezone.utc),
+                "created_at": datetime.now(UTC),
             }
         )
         book.add_order(
             {
                 "id": uuid4(),
                 "price": Decimal(200 + i % 20),
-                "quantity": Decimal("100"),
+                "quantity": Decimal(100),
                 "side": OrderSide.SELL,
                 "order_type": OrderType.LIMIT,
-                "created_at": datetime.now(timezone.utc),
+                "created_at": datetime.now(UTC),
             }
         )
 
@@ -328,10 +328,10 @@ async def benchmark_snapshot_vs_delta_bandwidth(
         order = {
             "id": uuid4(),
             "price": Decimal(100 + i % 20),
-            "quantity": Decimal("50"),
+            "quantity": Decimal(50),
             "side": OrderSide.BUY if i % 3 != 0 else OrderSide.SELL,
             "order_type": OrderType.LIMIT,
-            "created_at": datetime.now(timezone.utc),
+            "created_at": datetime.now(UTC),
         }
         book.add_order(order)
 

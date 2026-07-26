@@ -1,5 +1,5 @@
 from dataclasses import asdict
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from decimal import Decimal
 from typing import Any
 from uuid import UUID
@@ -74,7 +74,7 @@ class MatchingEngine:
         if trades:
             for trade in trades:
                 if "timestamp" not in trade:
-                    trade["timestamp"] = datetime.now(timezone.utc).isoformat()
+                    trade["timestamp"] = datetime.now(UTC).isoformat()
                 trade["price"] = str(trade["price"])
                 trade["quantity"] = str(trade["quantity"])
                 trade["buyer_order_id"] = str(trade["buyer_order_id"])
@@ -162,7 +162,7 @@ class MatchingEngine:
         sequence_before = order_book.delta_buffer.current_sequence
 
         # Add timestamp of when the order was processed.
-        order_message["created_at"] = datetime.now(timezone.utc)
+        order_message["created_at"] = datetime.now(UTC)
         trades = order_book.add_order(order_message)
 
         # Cache the order book state
