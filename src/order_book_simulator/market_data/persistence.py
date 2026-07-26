@@ -3,8 +3,8 @@ from decimal import Decimal
 from typing import Any
 from uuid import UUID, uuid4
 
-import orjson
-from sqlalchemy import text
+from sqlalchemy import bindparam, text
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.ext.asyncio import AsyncSession
 
 
@@ -22,15 +22,18 @@ async def persist_market_snapshot(
     query = text("""
         INSERT INTO market_snapshot (stock_id, timestamp, bids, asks)
         VALUES (:stock_id, :timestamp, :bids, :asks)
-    """)
+    """).bindparams(
+        bindparam("bids", type_=JSONB),
+        bindparam("asks", type_=JSONB),
+    )
 
     await db.execute(
         query,
         {
             "stock_id": stock_id,
-            "timestamp": datetime.now(),
-            "bids": orjson.dumps(snapshot["bids"]),
-            "asks": orjson.dumps(snapshot["asks"]),
+            "timestamp": datetime.now(timezone.utc),
+            "bids": snapshot["bids"],
+            "asks": snapshot["asks"],
         },
     )
 
