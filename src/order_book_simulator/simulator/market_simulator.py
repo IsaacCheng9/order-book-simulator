@@ -377,6 +377,7 @@ class MarketSimulator:
                 )
             except Exception as e:
                 logger.error(f"Failed to connect to server: {e}")
+                raise
 
     async def _check_server_health(
         self, api_url: str, session: aiohttp.ClientSession
