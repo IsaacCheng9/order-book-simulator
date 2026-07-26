@@ -9,7 +9,7 @@ conditions and before / after changes to the code implementation.
 """
 
 import time
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from decimal import Decimal
 from uuid import uuid4
 
@@ -31,10 +31,10 @@ def create_test_order(price: Decimal, side: OrderSide = OrderSide.BUY) -> dict:
     return {
         "id": uuid4(),
         "price": price,
-        "quantity": Decimal("100"),
+        "quantity": Decimal(100),
         "side": side,
         "order_type": OrderType.LIMIT,
-        "created_at": datetime.now(timezone.utc),
+        "created_at": datetime.now(UTC),
     }
 
 

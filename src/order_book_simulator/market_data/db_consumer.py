@@ -88,13 +88,12 @@ class MarketDataDBConsumer:
         logger.debug(f"Flushed batch of {len(batch)} market data entries to Postgres")
 
     async def _persist_batch(self, batch: list[dict[str, Any]]) -> None:
-        async with AsyncSessionLocal() as session:
-            async with session.begin():
-                for data in batch:
-                    stock_id = UUID(data["stock_id"])
-                    await persist_market_snapshot(stock_id, data, session)
-                    if data.get("trades"):
-                        await persist_trades(stock_id, data["trades"], session)
+        async with AsyncSessionLocal() as session, session.begin():
+            for data in batch:
+                stock_id = UUID(data["stock_id"])
+                await persist_market_snapshot(stock_id, data, session)
+                if data.get("trades"):
+                    await persist_trades(stock_id, data["trades"], session)
 
     async def _commit_offsets(self, offsets: dict[TopicPartition, int]) -> None:
         if not offsets or self.consumer is None:

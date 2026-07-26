@@ -1,6 +1,6 @@
 import asyncio
 import logging
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from decimal import Decimal, InvalidOperation
 from typing import Any
 from uuid import UUID
@@ -237,21 +237,15 @@ class OrderConsumer:
             if gateway_time is None:
                 raise RuntimeError("Order message was parsed without gateway time.")
             # Track the latency for new orders.
-            kafka_latency = (
-                datetime.now(timezone.utc) - gateway_time
-            ).total_seconds() * 1000
+            kafka_latency = (datetime.now(UTC) - gateway_time).total_seconds() * 1000
             logger.info(
                 f"Processing order: {order_id=}, kafka_latency={kafka_latency:.2f}ms"
             )
 
-            start_process = datetime.now(timezone.utc)
+            start_process = datetime.now(UTC)
             await self.matching_engine.process_order(order_data)
-            process_time = (
-                datetime.now(timezone.utc) - start_process
-            ).total_seconds() * 1000
-            total_latency = (
-                datetime.now(timezone.utc) - gateway_time
-            ).total_seconds() * 1000
+            process_time = (datetime.now(UTC) - start_process).total_seconds() * 1000
+            total_latency = (datetime.now(UTC) - gateway_time).total_seconds() * 1000
             logger.info(
                 f"Order processed: {order_id=}, "
                 f"matching_time={process_time:.2f}ms, "
@@ -320,7 +314,7 @@ class OrderConsumer:
                 if attempt == self.max_retries - 1:
                     logger.error(
                         f"Failed to connect to Kafka after {self.max_retries} "
-                        f"attempts: {str(e)}"
+                        f"attempts: {e!s}"
                     )
                     raise
                 logger.warning(
@@ -338,7 +332,7 @@ class OrderConsumer:
                 # reprocessed after the consumer restarts.
                 await self.consumer.commit()
         except Exception as e:
-            logger.error(f"Error consuming messages: {str(e)}")
+            logger.error(f"Error consuming messages: {e!s}")
             raise
         finally:
             await self.stop()

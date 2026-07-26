@@ -1,5 +1,5 @@
+from collections.abc import Callable
 from datetime import datetime
-from typing import Callable
 
 import pandas as pd
 import streamlit as st
@@ -122,17 +122,17 @@ def display_trade_history():
                 # separate to what the user has selected for the display
                 st.subheader("Trading Activity Summary")
                 active_stocks = len(
-                    set(trade["ticker"] for trade in all_trades if "ticker" in trade)
+                    {trade["ticker"] for trade in all_trades if "ticker" in trade}
                 )
 
                 # Calculate market activity rate (trades per minute) using all
                 # trades
                 if all_trades and len(all_trades) > 1:
                     first_trade_time = datetime.fromisoformat(
-                        all_trades[-1]["trade_time"].replace("Z", "+00:00")
+                        all_trades[-1]["trade_time"]
                     )
                     last_trade_time = datetime.fromisoformat(
-                        all_trades[0]["trade_time"].replace("Z", "+00:00")
+                        all_trades[0]["trade_time"]
                     )
                     time_diff_minutes = (
                         last_trade_time - first_trade_time
@@ -252,8 +252,8 @@ def display_trade_history():
         else:
             st.error("Failed to fetch trade data.")
 
-    except Exception as e:
-        st.error(f"Error fetching trade data: {str(e)}")
+    except (KeyError, TypeError, ValueError) as e:
+        st.error(f"Error fetching trade data: {e!s}")
 
 
 def create_auto_refresh_trade_history(interval: int) -> Callable:

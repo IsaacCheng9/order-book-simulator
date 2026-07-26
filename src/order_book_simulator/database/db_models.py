@@ -35,8 +35,8 @@ class Stock(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
 
     # Relationships
-    orders: Mapped[list["Order"]] = relationship("Order", back_populates="stock")
-    trades: Mapped[list["Trade"]] = relationship("Trade", back_populates="stock")
+    orders: Mapped[list[Order]] = relationship("Order", back_populates="stock")
+    trades: Mapped[list[Trade]] = relationship("Trade", back_populates="stock")
 
 
 class Order(Base):
@@ -58,11 +58,11 @@ class Order(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
 
     # Relationships
-    stock: Mapped["Stock"] = relationship("Stock", back_populates="orders")
-    buy_trades: Mapped[list["Trade"]] = relationship(
+    stock: Mapped[Stock] = relationship("Stock", back_populates="orders")
+    buy_trades: Mapped[list[Trade]] = relationship(
         "Trade", foreign_keys="Trade.buyer_order_id", back_populates="buyer_order"
     )
-    sell_trades: Mapped[list["Trade"]] = relationship(
+    sell_trades: Mapped[list[Trade]] = relationship(
         "Trade", foreign_keys="Trade.seller_order_id", back_populates="seller_order"
     )
 

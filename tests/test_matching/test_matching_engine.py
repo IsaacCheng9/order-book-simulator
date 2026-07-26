@@ -1,4 +1,4 @@
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from decimal import Decimal
 from typing import Any
 from unittest.mock import AsyncMock
@@ -17,11 +17,11 @@ def create_order(stock_id: UUID) -> dict[str, Any]:
         "id": str(uuid4()),
         "stock_id": str(stock_id),
         "ticker": "TICKER",
-        "price": Decimal("100"),
-        "quantity": Decimal("10"),
+        "price": Decimal(100),
+        "quantity": Decimal(10),
         "side": OrderSide.BUY,
         "order_type": OrderType.LIMIT,
-        "created_at": datetime.now(timezone.utc),
+        "created_at": datetime.now(UTC),
     }
 
 

@@ -1,4 +1,4 @@
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from decimal import Decimal
 from typing import Any
 from uuid import UUID, uuid4
@@ -28,7 +28,7 @@ async def persist_market_snapshot(
         query,
         {
             "stock_id": stock_id,
-            "timestamp": datetime.now(),
+            "timestamp": datetime.now(UTC),
             "bids": orjson.dumps(snapshot["bids"]),
             "asks": orjson.dumps(snapshot["asks"]),
         },
@@ -65,9 +65,9 @@ async def persist_order(order: dict[str, Any], db: AsyncSession) -> None:
             "side": order["side"],
             "price": Decimal(str(order["price"])),
             "quantity": Decimal(str(order["quantity"])),
-            "filled_quantity": Decimal("0"),
+            "filled_quantity": Decimal(0),
             "status": "PENDING",
-            "created_at": order.get("created_at", datetime.now(timezone.utc)),
+            "created_at": order.get("created_at", datetime.now(UTC)),
             "type": "LIMIT",  # Default to LIMIT orders for now
             "user_id": UUID("00000000-0000-0000-0000-000000000000"),  # Default user ID
         },
@@ -130,7 +130,7 @@ async def persist_trades(stock_id: UUID, trades: list[dict], db: AsyncSession) -
         timestamp = (
             datetime.fromisoformat(trade["timestamp"])
             if isinstance(trade["timestamp"], str)
-            else trade.get("timestamp", datetime.now(timezone.utc))
+            else trade.get("timestamp", datetime.now(UTC))
         )
 
         await db.execute(

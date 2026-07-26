@@ -1,5 +1,5 @@
 import asyncio
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from unittest.mock import MagicMock
 from uuid import uuid4
 
@@ -25,7 +25,7 @@ def test_get_deltas_returns_deltas(test_client, matching_engine, monkeypatch):
         "quantity": "10.00",
         "side": OrderSide.BUY.value,
         "order_type": OrderType.LIMIT.value,
-        "created_at": datetime.now(timezone.utc),
+        "created_at": datetime.now(UTC),
     }
     asyncio.run(matching_engine.process_order(order))
 
@@ -65,7 +65,7 @@ def test_get_deltas_returns_empty_when_up_to_date(
         "quantity": "10.00",
         "side": OrderSide.BUY.value,
         "order_type": OrderType.LIMIT.value,
-        "created_at": datetime.now(timezone.utc),
+        "created_at": datetime.now(UTC),
     }
     asyncio.run(matching_engine.process_order(order))
 
@@ -106,7 +106,7 @@ def test_get_deltas_snapshot_fallback(test_client, matching_engine, monkeypatch)
             "quantity": "10.00",
             "side": OrderSide.BUY.value,
             "order_type": OrderType.LIMIT.value,
-            "created_at": datetime.now(timezone.utc),
+            "created_at": datetime.now(UTC),
         }
         asyncio.run(matching_engine.process_order(order))
 

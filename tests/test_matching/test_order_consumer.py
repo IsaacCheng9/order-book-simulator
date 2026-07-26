@@ -1,4 +1,4 @@
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any, ClassVar, cast
 from unittest.mock import AsyncMock
 from uuid import uuid4
@@ -16,7 +16,7 @@ class FakeKafkaConsumer:
     """Provide an async iterable Kafka consumer for start-loop tests."""
 
     queued_messages: ClassVar[list[ConsumerRecord]] = []
-    last_instance: ClassVar["FakeKafkaConsumer | None"] = None
+    last_instance: ClassVar[FakeKafkaConsumer | None] = None
 
     def __init__(self, *args: Any, **kwargs: Any) -> None:
         self.messages = list(self.__class__.queued_messages)
@@ -37,7 +37,7 @@ class FakeKafkaConsumer:
         """Record an offset commit."""
         self.commit_count += 1
 
-    def __aiter__(self) -> "FakeKafkaConsumer":
+    def __aiter__(self) -> FakeKafkaConsumer:
         return self
 
     async def __anext__(self) -> ConsumerRecord:
@@ -87,7 +87,7 @@ def valid_order_payload() -> bytes:
             "order_type": "LIMIT",
             "price": "100",
             "quantity": "10",
-            "gateway_received_at": datetime.now(timezone.utc).isoformat(),
+            "gateway_received_at": datetime.now(UTC).isoformat(),
         }
     )
 
@@ -108,7 +108,7 @@ async def test_process_order_message_calls_matching_engine(
             "order_type": "LIMIT",
             "price": "100",
             "quantity": "10",
-            "gateway_received_at": datetime.now(timezone.utc).isoformat(),
+            "gateway_received_at": datetime.now(UTC).isoformat(),
         }
     )
     await consumer._process_message(make_record(payload))
@@ -220,7 +220,7 @@ async def test_unexpected_exception_propagates(
             "order_type": "LIMIT",
             "price": "100",
             "quantity": "10",
-            "gateway_received_at": datetime.now(timezone.utc).isoformat(),
+            "gateway_received_at": datetime.now(UTC).isoformat(),
         }
     )
 
@@ -270,7 +270,7 @@ async def test_invalid_order_schema_is_skipped_before_engine(
             "order_type": "LIMIT",
             "price": "100",
             "quantity": "10",
-            "gateway_received_at": datetime.now(timezone.utc).isoformat(),
+            "gateway_received_at": datetime.now(UTC).isoformat(),
         }
     )
 

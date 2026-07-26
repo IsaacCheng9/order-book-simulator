@@ -53,8 +53,8 @@ async def run_simulation() -> None:
     # Extract configuration
     tickers = list(STOCK_CONFIG.keys())
     base_prices = {ticker: cfg["base_price"] for ticker, cfg in STOCK_CONFIG.items()}
-    min_sizes = {ticker: Decimal("1") for ticker in tickers}
-    max_sizes = {ticker: Decimal("100") for ticker in tickers}
+    min_sizes = {ticker: Decimal(1) for ticker in tickers}
+    max_sizes = {ticker: Decimal(100) for ticker in tickers}
 
     # Create and run simulator
     simulator = MarketSimulator(
@@ -80,8 +80,9 @@ def main() -> None:
         asyncio.run(run_simulation())
     except KeyboardInterrupt:
         logger.info("Simulation stopped by user")
-    except Exception as e:
-        logger.error(f"Simulation failed: {e}", exc_info=True)
+    except Exception:
+        logger.exception("Simulation failed")
+        raise
 
 
 if __name__ == "__main__":

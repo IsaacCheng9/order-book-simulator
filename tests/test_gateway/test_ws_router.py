@@ -1,5 +1,5 @@
 import asyncio
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock
 from uuid import uuid4
 
@@ -52,7 +52,7 @@ def test_ws_receives_initial_snapshot(matching_engine, monkeypatch):
         "quantity": "10.00",
         "side": OrderSide.BUY.value,
         "order_type": OrderType.LIMIT.value,
-        "created_at": datetime.now(timezone.utc),
+        "created_at": datetime.now(UTC),
     }
     asyncio.run(matching_engine.process_order(order))
 
@@ -78,7 +78,7 @@ def test_ws_snapshot_includes_sequence_number(matching_engine, monkeypatch):
         "quantity": "10.00",
         "side": OrderSide.BUY.value,
         "order_type": OrderType.LIMIT.value,
-        "created_at": datetime.now(timezone.utc),
+        "created_at": datetime.now(UTC),
     }
     asyncio.run(matching_engine.process_order(order))
 
@@ -109,7 +109,7 @@ def test_ws_reconnect_receives_missed_deltas(matching_engine, monkeypatch):
             "quantity": "10.00",
             "side": OrderSide.BUY.value,
             "order_type": OrderType.LIMIT.value,
-            "created_at": datetime.now(timezone.utc),
+            "created_at": datetime.now(UTC),
         }
         asyncio.run(matching_engine.process_order(order))
 
@@ -130,7 +130,7 @@ def test_ws_reconnect_receives_missed_deltas(matching_engine, monkeypatch):
         "quantity": "10.00",
         "side": OrderSide.BUY.value,
         "order_type": OrderType.LIMIT.value,
-        "created_at": datetime.now(timezone.utc),
+        "created_at": datetime.now(UTC),
     }
     asyncio.run(matching_engine.process_order(order))
 
@@ -158,7 +158,7 @@ def test_ws_reconnect_up_to_date_receives_empty_deltas(matching_engine, monkeypa
         "quantity": "10.00",
         "side": OrderSide.BUY.value,
         "order_type": OrderType.LIMIT.value,
-        "created_at": datetime.now(timezone.utc),
+        "created_at": datetime.now(UTC),
     }
     asyncio.run(matching_engine.process_order(order))
 
@@ -195,7 +195,7 @@ def test_ws_reconnect_evicted_sequence_falls_back_to_snapshot(
         "quantity": "10.00",
         "side": OrderSide.BUY.value,
         "order_type": OrderType.LIMIT.value,
-        "created_at": datetime.now(timezone.utc),
+        "created_at": datetime.now(UTC),
     }
     asyncio.run(matching_engine.process_order(order))
 
