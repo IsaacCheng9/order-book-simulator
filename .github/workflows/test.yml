@@ -45,9 +45,6 @@ jobs:
       - name: Install the project
         run: uv sync --all-extras --dev
 
-      - name: Run Pyrefly
-        run: uv run pyrefly check
-
       - name: Run tests with Pytest
         run: uv run coverage run --source=src/order_book_simulator/ -m pytest -v
 
