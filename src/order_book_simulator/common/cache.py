@@ -139,7 +139,8 @@ class OrderBookCache:
             The trade history for the stock.
         """
         key = self._get_trades_key(stock_id)
-        raw_data = await self.redis.lrange(key, -limit, -1)  # type: ignore[arg-type]
+        # redis-py types async commands as sync-or-async return unions.
+        raw_data = await self.redis.lrange(key, -limit, -1)  # pyrefly: ignore[not-async]
         return [orjson.loads(data) for data in reversed(raw_data)]
 
     async def append_trades(self, stock_id: UUID, trades: list[dict]) -> None:
@@ -155,9 +156,9 @@ class OrderBookCache:
         """
         key = self._get_trades_key(stock_id)
         serialised_trades = [orjson.dumps(trade, default=str) for trade in trades]
-        await self.redis.rpush(key, *serialised_trades)  # type: ignore[arg-type]
+        await self.redis.rpush(key, *serialised_trades)  # pyrefly: ignore[not-async]
         # Enforce the maximum trade history.
-        await self.redis.ltrim(key, -self.max_trade_history, -1)  # type: ignore[arg-type]
+        await self.redis.ltrim(key, -self.max_trade_history, -1)  # pyrefly: ignore[not-async]
 
     async def store_deltas(self, stock_id: UUID, deltas: list[Delta]) -> None:
         """
@@ -177,8 +178,8 @@ class OrderBookCache:
         ]
         # Store the deltas in Redis.
         deltas_key = self._get_deltas_key(stock_id)
-        await self.redis.rpush(deltas_key, *serialised_deltas)  # type: ignore[arg-type]
-        await self.redis.ltrim(deltas_key, -MAX_DELTA_HISTORY, -1)  # type: ignore[arg-type]
+        await self.redis.rpush(deltas_key, *serialised_deltas)  # pyrefly: ignore[not-async]
+        await self.redis.ltrim(deltas_key, -MAX_DELTA_HISTORY, -1)  # pyrefly: ignore[not-async]
         last_delta_seq_number = self._get_delta_seq_key(stock_id)
         await self.redis.set(last_delta_seq_number, deltas[-1].sequence_number)
 
@@ -210,7 +211,9 @@ class OrderBookCache:
             needs a full snapshot.
         """
         deltas_key = self._get_deltas_key(stock_id)
-        all_deltas: list[bytes] = await self.redis.lrange(deltas_key, 0, -1)  # type: ignore[arg-type]
+        all_deltas: list[bytes] = await self.redis.lrange(  # pyrefly: ignore[not-async]
+            deltas_key, 0, -1
+        )
         if not all_deltas:
             return []
 

@@ -20,7 +20,7 @@ import time
 from dataclasses import asdict
 from datetime import UTC, datetime
 from decimal import Decimal
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import uuid4
 
 import orjson
@@ -46,11 +46,8 @@ def _create_mock_publisher() -> MulticastPublisher:
     """Create a MulticastPublisher with a mocked UDP socket."""
     mock_socket_module = MagicMock()
     mock_socket_module.socket.return_value = MagicMock()
-    original = pub_module.socket
-    pub_module.socket = mock_socket_module  # type: ignore[assignment]
-    publisher = MulticastPublisher(group="239.1.1.1", port=5555)
-    pub_module.socket = original
-    return publisher
+    with patch.object(pub_module, "socket", mock_socket_module):
+        return MulticastPublisher(group="239.1.1.1", port=5555)
 
 
 def _create_delta_payload() -> bytes:

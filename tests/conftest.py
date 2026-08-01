@@ -1,5 +1,6 @@
 from datetime import UTC, datetime
 from decimal import Decimal
+from typing import cast
 from unittest.mock import AsyncMock, MagicMock
 from uuid import UUID, uuid4
 
@@ -277,15 +278,17 @@ def order_book() -> OrderBook:
 @pytest.fixture(autouse=True)
 def mock_redis():
     """Creates a mock Redis instance for testing."""
-    mock_data = {}
+    RedisScalar = str | bytes | int
+    mock_data: dict[str, RedisScalar | list[RedisScalar]] = {}
     streams: dict[str, list[tuple[str, dict]]] = {}
 
     class MockRedis:
-        async def set(self, key: str, value: str) -> None:
+        async def set(self, key: str, value: RedisScalar) -> None:
             mock_data[key] = value
 
-        async def get(self, key: str) -> str | None:
-            return mock_data.get(key)
+        async def get(self, key: str) -> RedisScalar | None:
+            value = mock_data.get(key)
+            return value if not isinstance(value, list) else None
 
         async def keys(self, pattern: str) -> list[str]:
             if pattern == "order_book:*":
@@ -298,7 +301,7 @@ def mock_redis():
         def exists(self, key: str) -> bool:
             return key in mock_data
 
-        async def lrange(self, key: str, start: int, end: int) -> list[str]:
+        async def lrange(self, key: str, start: int, end: int) -> list[RedisScalar]:
             data = mock_data.get(key, [])
             if not isinstance(data, list):
                 return []
@@ -307,18 +310,18 @@ def mock_redis():
                 return data[start:]
             return data[start : end + 1]
 
-        async def rpush(self, key: str, *values: str) -> int:
-            if key not in mock_data:
-                mock_data[key] = []
-            mock_data[key].extend(values)
-            return len(mock_data[key])
+        async def rpush(self, key: str, *values: RedisScalar) -> int:
+            data = cast(list[RedisScalar], mock_data.setdefault(key, []))
+            data.extend(values)
+            return len(data)
 
         async def ltrim(self, key: str, start: int, end: int) -> None:
-            if key in mock_data and isinstance(mock_data[key], list):
+            data = mock_data.get(key)
+            if isinstance(data, list):
                 if end == -1:
-                    mock_data[key] = mock_data[key][start:]
+                    mock_data[key] = data[start:]
                 else:
-                    mock_data[key] = mock_data[key][start : end + 1]
+                    mock_data[key] = data[start : end + 1]
 
         async def publish(self, channel: str, message: bytes) -> None:
             pass
@@ -359,7 +362,9 @@ def mock_redis():
             ]
             return [] if not entries else [(key, entries[: count or len(entries)])]
 
-    order_book_cache.redis = MockRedis()  # type: ignore[assignment]
+    # The concrete redis-py type is not structural, but this test double
+    # implements the subset exercised by the cache tests.
+    order_book_cache.redis = MockRedis()  # pyrefly: ignore[bad-argument-type]
     yield
     mock_data.clear()
 

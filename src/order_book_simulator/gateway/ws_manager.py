@@ -159,11 +159,19 @@ async def redis_pubsub_delta_subscriber(redis_url: str) -> None:
             if message is None:
                 continue
 
+            if message["type"] != "pmessage":
+                continue
+
             channel = message["channel"]
+            payload = message["data"]
+            if not isinstance(channel, (str, bytes)) or not isinstance(
+                payload, (str, bytes, bytearray, memoryview)
+            ):
+                continue
             if isinstance(channel, bytes):
                 channel = channel.decode()
             ticker = channel.split(":")[-1]
-            deltas = orjson.loads(message["data"])
+            deltas = orjson.loads(payload)
             ws_manager.broadcast({"type": "deltas", "data": deltas}, ticker)
     finally:
         await pubsub.punsubscribe("ws:deltas:*")
