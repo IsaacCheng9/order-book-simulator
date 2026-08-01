@@ -36,12 +36,14 @@ dev = [
     "aiosqlite>=0.21.0",
     "coverage>=7.6.10",
     "httpx>=0.28.1",
+    "pandas-stubs>=3.0.5.260730",
+    "pyrefly>=1.2.0",
     "pytest>=9.0.3",
     "pytest-asyncio>=0.25.3",
     "pytest-cov>=6.0.0",
     "ruff==0.16.0",
     "sortedcontainers-stubs>=2.4.3",
-    "ty>=0.0.11",
+    "types-requests>=2.33.0.20260712",
     "typing-extensions>=4.12.2",
 ]
 
@@ -61,5 +63,12 @@ bump_pattern = "^(feat|fix|refactor|perf|build|ci|docs|style|test|chore|BREAKING
 [tool.hatch.build.targets.wheel]
 packages = ["src/order_book_simulator"]
 
-[tool.ty.environment]
-extra-paths = ["benchmarks/unit"]
+[tool.pyrefly]
+project-includes = [
+    "src/**/*.py",
+    "tests/**/*.py",
+    "benchmarks/**/*.py",
+    "examples/**/*.py",
+]
+python-version = "3.14"
+search-path = ["src", ".", "benchmarks/unit"]

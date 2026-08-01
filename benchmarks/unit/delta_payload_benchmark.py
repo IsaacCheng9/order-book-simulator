@@ -116,6 +116,8 @@ def run_benchmark() -> None:
     print(f"Total operations:        {num_operations:,}")
     print(f"Snapshot total bytes:     {total_snapshot_bytes:,}")
     print(f"Delta total bytes:        {total_delta_bytes:,}")
+    if total_snapshot_bytes == 0 or num_operations == 0:
+        raise RuntimeError("Benchmark did not record any operations")
     reduction = (1 - total_delta_bytes / total_snapshot_bytes) * 100
     print(f"Bandwidth reduction:      {reduction:.1f}%")
     print(
