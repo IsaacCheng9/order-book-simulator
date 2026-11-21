@@ -5,7 +5,7 @@ from enum import Enum
 from typing import TypedDict
 from uuid import UUID
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 MAX_DELTA_HISTORY = 2000
 
@@ -35,8 +35,8 @@ class OrderRequest(BaseModel):
     side: OrderSide
     price: Decimal | None = None
     quantity: Decimal
-    time_in_force: str | None = None
-    client_order_id: str | None = None
+    time_in_force: str | None = Field(default=None, max_length=20)
+    client_order_id: str | None = Field(default=None, max_length=100)
 
 
 class OrderResponse(BaseModel):

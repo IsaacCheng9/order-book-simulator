@@ -1,4 +1,4 @@
-from decimal import Decimal
+from decimal import Decimal, InvalidOperation
 
 from fastapi import HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -8,12 +8,19 @@ from order_book_simulator.database.db_models import Stock
 from order_book_simulator.database.queries import get_stock_by_ticker
 
 SUPPORTED_ORDER_TYPES = frozenset({OrderType.LIMIT, OrderType.MARKET})
+# Keep price * max_order_size (1,000,000) and total_amount below the
+# NUMERIC(20, 8) 10^12 upper bound in PostgreSQL.
+MAX_ORDER_PRICE = Decimal(100_000)
+MAX_ORDER_NOTIONAL = Decimal(10**12)
 
 
 def _has_valid_price_precision(price: Decimal, price_precision: int) -> bool:
     """Return whether a price is on the stock's configured tick size."""
     tick_size = Decimal(1).scaleb(-price_precision)
-    return price == price.quantize(tick_size)
+    try:
+        return price == price.quantize(tick_size)
+    except InvalidOperation:
+        return False
 
 
 async def validate_order(order_request: OrderRequest, db: AsyncSession) -> Stock:
@@ -86,6 +93,18 @@ async def validate_order(order_request: OrderRequest, db: AsyncSession) -> Stock
         raise HTTPException(
             status_code=400,
             detail="Limit order price must be positive",
+        )
+
+    if order_request.price > MAX_ORDER_PRICE:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Limit order price must not exceed {MAX_ORDER_PRICE}",
+        )
+
+    if order_request.price * order_request.quantity >= MAX_ORDER_NOTIONAL:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Order notional value must be less than {MAX_ORDER_NOTIONAL}",
         )
 
     if not _has_valid_price_precision(order_request.price, stock.price_precision):
