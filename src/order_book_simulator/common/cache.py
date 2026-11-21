@@ -251,6 +251,95 @@ class OrderBookCache:
             await self.redis.ltrim(deltas_key, -MAX_DELTA_HISTORY, -1)  # pyrefly: ignore[not-async]
             await self.redis.set(last_delta_seq_number, latest_seq)
 
+    async def store_order_book_and_deltas(
+        self,
+        stock_id: UUID,
+        snapshot: dict[str, Any],
+        deltas: list[Delta],
+    ) -> None:
+        """Atomically persist an order book snapshot, unseen deltas, and seq.
+
+        Writing the snapshot, delta list, and sequence watermark in one Redis
+        transaction prevents concurrent readers of
+        ``get_order_book_with_sequence`` from observing a new snapshot paired
+        with a stale sequence number.
+
+        Args:
+            stock_id: The stock ID.
+            snapshot: The order book snapshot to store.
+            deltas: Deltas emitted by the matching step.
+        """
+        book_key = self._get_order_book_key(stock_id)
+        serialised_snapshot = orjson.dumps(snapshot, default=str)
+
+        new_deltas: list[Delta] = []
+        if deltas:
+            current_seq = await self.get_current_delta_sequence_number(stock_id)
+            new_deltas = [
+                delta for delta in deltas if delta.sequence_number > current_seq
+            ]
+
+        if not new_deltas:
+            await self.redis.set(book_key, serialised_snapshot)
+            return
+
+        serialised_deltas: list[bytes] = [
+            orjson.dumps(asdict(delta), default=str) for delta in new_deltas
+        ]
+        deltas_key = self._get_deltas_key(stock_id)
+        seq_key = self._get_delta_seq_key(stock_id)
+        latest_seq = new_deltas[-1].sequence_number
+        if hasattr(self.redis, "pipeline"):
+            async with self.redis.pipeline(transaction=True) as pipe:
+                pipe.set(book_key, serialised_snapshot)
+                pipe.rpush(deltas_key, *serialised_deltas)
+                pipe.ltrim(deltas_key, -MAX_DELTA_HISTORY, -1)
+                pipe.set(seq_key, latest_seq)
+                await pipe.execute()
+        else:
+            await self.redis.set(book_key, serialised_snapshot)
+            await self.redis.rpush(deltas_key, *serialised_deltas)  # pyrefly: ignore[not-async]
+            await self.redis.ltrim(deltas_key, -MAX_DELTA_HISTORY, -1)  # pyrefly: ignore[not-async]
+            await self.redis.set(seq_key, latest_seq)
+
+    async def replace_order_book_and_deltas(
+        self,
+        stock_id: UUID,
+        snapshot: dict[str, Any],
+        deltas: list[Delta],
+        current_sequence: int,
+    ) -> None:
+        """Atomically replace snapshot, deltas, and sequence after replay.
+
+        Args:
+            stock_id: The stock ID.
+            snapshot: The rebuilt order book snapshot.
+            deltas: Recent deltas retained in memory for the stock.
+            current_sequence: Current monotonic sequence number for the stock.
+        """
+        book_key = self._get_order_book_key(stock_id)
+        deltas_key = self._get_deltas_key(stock_id)
+        seq_key = self._get_delta_seq_key(stock_id)
+        serialised_snapshot = orjson.dumps(snapshot, default=str)
+        bounded_deltas = deltas[-MAX_DELTA_HISTORY:] if MAX_DELTA_HISTORY > 0 else []
+        serialised_deltas = [
+            orjson.dumps(asdict(delta), default=str) for delta in bounded_deltas
+        ]
+        if hasattr(self.redis, "pipeline"):
+            async with self.redis.pipeline(transaction=True) as pipe:
+                pipe.set(book_key, serialised_snapshot)
+                pipe.delete(deltas_key)
+                if serialised_deltas:
+                    pipe.rpush(deltas_key, *serialised_deltas)
+                pipe.set(seq_key, current_sequence)
+                await pipe.execute()
+        else:
+            await self.redis.set(book_key, serialised_snapshot)
+            await self.redis.delete(deltas_key)
+            if serialised_deltas:
+                await self.redis.rpush(deltas_key, *serialised_deltas)  # pyrefly: ignore[not-async]
+            await self.redis.set(seq_key, current_sequence)
+
     async def replace_deltas(
         self,
         stock_id: UUID,

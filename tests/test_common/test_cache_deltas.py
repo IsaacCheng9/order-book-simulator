@@ -1,5 +1,6 @@
 from decimal import Decimal
-from uuid import uuid4
+from typing import Any
+from uuid import UUID, uuid4
 
 import pytest
 
@@ -181,3 +182,93 @@ async def test_get_deltas_since_with_sequence_falls_back_on_empty_reset_or_tail_
     deltas, seq = await order_book_cache.get_deltas_since_with_sequence(stock_id, 0)
     assert deltas is None
     assert seq == 0
+
+
+def _install_pipeline_spy(
+    monkeypatch: pytest.MonkeyPatch,
+) -> list[list[str]]:
+    """Record Redis MULTI/EXEC transaction command lists executed on the cache."""
+    transactions: list[list[str]] = []
+    redis_client: Any = order_book_cache.redis
+    original_pipeline = redis_client.pipeline
+
+    def spy_pipeline(transaction: bool = True) -> Any:
+        assert transaction is True
+        pipe: Any = original_pipeline(transaction=transaction)
+        original_execute = pipe.execute
+
+        async def spy_execute() -> list[Any]:
+            transactions.append([op_name for op_name, _ in pipe._ops])
+            return await original_execute()
+
+        pipe.execute = spy_execute
+        return pipe
+
+    monkeypatch.setattr(redis_client, "pipeline", spy_pipeline)
+    return transactions
+
+
+@pytest.mark.asyncio
+async def test_store_order_book_and_deltas_writes_atomically(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    """Persist snapshot, deltas, and sequence watermark in one transaction."""
+    stock_id: UUID = uuid4()
+    snapshot = {
+        "bids": [{"price": "100", "quantity": "50", "order_count": 1}],
+        "asks": [],
+    }
+    deltas = [_make_delta(1), _make_delta(2)]
+    transactions = _install_pipeline_spy(monkeypatch)
+
+    await order_book_cache.store_order_book_and_deltas(stock_id, snapshot, deltas)
+
+    # Snapshot, delta append, trim, and sequence update must share one MULTI/EXEC.
+    assert transactions == [["set", "rpush", "ltrim", "set"]]
+
+    stored_book, stored_seq = await order_book_cache.get_order_book_with_sequence(
+        stock_id
+    )
+    assert stored_book == snapshot
+    assert stored_seq == 2
+
+    # Replaying already-stored deltas must not duplicate entries in Redis.
+    await order_book_cache.store_order_book_and_deltas(stock_id, snapshot, deltas)
+    stored_deltas = await order_book_cache.get_deltas_since(stock_id, 0)
+    assert stored_deltas is not None
+    assert [d["sequence_number"] for d in stored_deltas] == [1, 2]
+
+
+@pytest.mark.asyncio
+async def test_replace_order_book_and_deltas_writes_atomically(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    """Replace snapshot, deltas, and sequence watermark in one transaction."""
+    stock_id: UUID = uuid4()
+    await order_book_cache.store_order_book_and_deltas(
+        stock_id,
+        {"bids": [{"price": "99", "quantity": "10", "order_count": 1}], "asks": []},
+        [_make_delta(1)],
+    )
+
+    rebuilt_snapshot = {
+        "bids": [{"price": "100", "quantity": "50", "order_count": 1}],
+        "asks": [],
+    }
+    rebuilt_deltas = [_make_delta(1), _make_delta(2), _make_delta(3)]
+    transactions = _install_pipeline_spy(monkeypatch)
+
+    await order_book_cache.replace_order_book_and_deltas(
+        stock_id, rebuilt_snapshot, rebuilt_deltas, current_sequence=3
+    )
+
+    assert transactions == [["set", "delete", "rpush", "set"]]
+
+    stored_book, stored_seq = await order_book_cache.get_order_book_with_sequence(
+        stock_id
+    )
+    assert stored_book == rebuilt_snapshot
+    assert stored_seq == 3
+    stored_deltas = await order_book_cache.get_deltas_since(stock_id, 0)
+    assert stored_deltas is not None
+    assert [d["sequence_number"] for d in stored_deltas] == [1, 2, 3]

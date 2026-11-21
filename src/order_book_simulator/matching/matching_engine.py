@@ -145,11 +145,9 @@ class MatchingEngine:
         every recovered stock, even if Redis started empty.
         """
         for stock_id, order_book in self.order_books.items():
-            await order_book_cache.set_order_book(
-                stock_id, order_book.get_full_snapshot()
-            )
-            await order_book_cache.replace_deltas(
+            await order_book_cache.replace_order_book_and_deltas(
                 stock_id,
+                order_book.get_full_snapshot(),
                 order_book.delta_buffer.get_recent_deltas(),
                 order_book.delta_buffer.current_sequence,
             )
@@ -188,12 +186,15 @@ class MatchingEngine:
         if not publish:
             return {"success": True, "reason": "Order cancelled"}
 
-        # Update the order book cache. Redis Pub/Sub and UDP multicast remain
-        # at-least-once on crash replay; clients deduplicate by sequence number.
-        await order_book_cache.set_order_book(stock_id, order_book.get_full_snapshot())
+        # Update the order book cache atomically with its deltas and sequence
+        # watermark so concurrent readers never observe a torn snapshot/seq.
+        # Redis Pub/Sub and UDP multicast remain at-least-once on crash replay;
+        # clients deduplicate by sequence number.
         deltas = order_book.last_deltas
+        await order_book_cache.store_order_book_and_deltas(
+            stock_id, order_book.get_full_snapshot(), deltas
+        )
         if deltas:
-            await order_book_cache.store_deltas(stock_id, deltas)
             await order_book_cache.publish_deltas(order_book.ticker, deltas)
             self._publish_deltas_to_multicast(deltas)
 
@@ -244,12 +245,15 @@ class MatchingEngine:
         if not publish:
             return
 
-        # Cache the order book state. Redis Pub/Sub and UDP multicast remain
-        # at-least-once on crash replay; clients deduplicate by sequence number.
-        await order_book_cache.set_order_book(stock_id, order_book.get_full_snapshot())
+        # Cache the order book state atomically with its deltas and sequence
+        # watermark so concurrent readers never observe a torn snapshot/seq.
+        # Redis Pub/Sub and UDP multicast remain at-least-once on crash replay;
+        # clients deduplicate by sequence number.
         deltas = order_book.last_deltas
+        await order_book_cache.store_order_book_and_deltas(
+            stock_id, order_book.get_full_snapshot(), deltas
+        )
         if deltas:
-            await order_book_cache.store_deltas(stock_id, deltas)
             await order_book_cache.publish_deltas(ticker, deltas)
             self._publish_deltas_to_multicast(deltas)
 
