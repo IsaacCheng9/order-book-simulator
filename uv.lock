@@ -1,5 +1,5 @@
 version = 1
-revision = 5
+revision = 3
 requires-python = ">=3.14"
 resolution-markers = [
     "sys_platform == 'win32'",
@@ -718,6 +718,7 @@ dependencies = [
     { name = "polars" },
     { name = "pydantic" },
     { name = "redis" },
+    { name = "requests" },
     { name = "sortedcontainers" },
     { name = "sqlalchemy" },
     { name = "streamlit" },
@@ -752,6 +753,7 @@ requires-dist = [
     { name = "polars", specifier = ">=1.22.0" },
     { name = "pydantic", specifier = ">=2.10.6" },
     { name = "redis", specifier = ">=5.2.1" },
+    { name = "requests", specifier = ">=2.32.3" },
     { name = "sortedcontainers", specifier = ">=2.4.0" },
     { name = "sqlalchemy", specifier = ">=2.0.37" },
     { name = "streamlit", specifier = ">=1.46.1" },

@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import os
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal, InvalidOperation
 from typing import Any
@@ -42,7 +43,7 @@ class OrderConsumer:
     def __init__(
         self,
         matching_engine: MatchingEngine,
-        bootstrap_servers: str = "kafka:9092",
+        bootstrap_servers: str | None = None,
         topic: str = "orders",
         group_id: str = "matching-engine",
         max_retries: int = 5,
@@ -55,7 +56,8 @@ class OrderConsumer:
 
         Args:
             matching_engine: The matching engine instance to process orders.
-            bootstrap_servers: Kafka bootstrap servers string.
+            bootstrap_servers: Kafka bootstrap servers string. Defaults to
+                ``KAFKA_BOOTSTRAP_SERVERS`` or ``kafka:9092``.
             topic: Kafka topic to consume from.
             group_id: Consumer group ID.
             max_retries: Maximum number of connection attempts.
@@ -65,7 +67,9 @@ class OrderConsumer:
         """
         self.consumer: AIOKafkaConsumer | None = None
         self.matching_engine = matching_engine
-        self.bootstrap_servers = bootstrap_servers
+        self.bootstrap_servers = bootstrap_servers or os.getenv(
+            "KAFKA_BOOTSTRAP_SERVERS", "kafka:9092"
+        )
         self.topic = topic
         self.group_id = group_id
         self.max_retries = max_retries
@@ -556,11 +560,14 @@ class OrderConsumer:
 async def main():
     """Main entry point for the matching engine consumer."""
     # Create Redis client for analytics.
-    redis_client = Redis(host="redis", port=6379, decode_responses=True)
+    redis_client = Redis.from_url(
+        os.getenv("REDIS_URL", "redis://redis:6379/0"), decode_responses=True
+    )
     analytics = MarketDataAnalytics(redis_client)
 
+    bootstrap_servers = os.getenv("KAFKA_BOOTSTRAP_SERVERS", "kafka:9092")
     # Create Kafka producer for publishing market data.
-    producer = AIOKafkaProducer(bootstrap_servers="kafka:9092")
+    producer = AIOKafkaProducer(bootstrap_servers=bootstrap_servers)
     await producer.start()
 
     # Create the matching engine with Kafka producer and analytics and a
@@ -573,6 +580,7 @@ async def main():
     )
     consumer = OrderConsumer(
         matching_engine=matching_engine,
+        bootstrap_servers=bootstrap_servers,
         session_timeout_ms=10000,
         heartbeat_interval_ms=1000,
     )

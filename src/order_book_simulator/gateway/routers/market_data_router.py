@@ -1,3 +1,4 @@
+import os
 from datetime import UTC, datetime, timedelta
 from typing import Annotated, Any
 from uuid import UUID
@@ -22,7 +23,9 @@ from order_book_simulator.market_data.analytics import MarketDataAnalytics
 market_data_router = APIRouter()
 
 # TODO: Move Redis client creation to a proper dependency
-redis_client = Redis(host="redis", port=6379, decode_responses=True)
+redis_client = Redis.from_url(
+    os.getenv("REDIS_URL", "redis://redis:6379/0"), decode_responses=True
+)
 analytics = MarketDataAnalytics(redis_client)
 
 

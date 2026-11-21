@@ -1,6 +1,7 @@
 import asyncio
 import datetime
 import logging
+import os
 from uuid import UUID
 
 import orjson
@@ -19,7 +20,7 @@ class OrderProducer:
 
     def __init__(
         self,
-        bootstrap_servers: str = "kafka:9092",
+        bootstrap_servers: str | None = None,
         topic: str = "orders",
         max_retries: int = 5,
         retry_delay: int = 5,
@@ -30,7 +31,8 @@ class OrderProducer:
         Creates a new order producer.
 
         Args:
-            bootstrap_servers: Kafka bootstrap servers string.
+            bootstrap_servers: Kafka bootstrap servers string. Defaults to
+                ``KAFKA_BOOTSTRAP_SERVERS`` or ``kafka:9092``.
             topic: Kafka topic to produce to.
             max_retries: Maximum number of connection attempts.
             retry_delay: Delay between connection attempts in seconds.
@@ -38,7 +40,9 @@ class OrderProducer:
             linger_ms: Time to wait for more records before sending a batch.
         """
         self.producer: AIOKafkaProducer | None = None
-        self.bootstrap_servers = bootstrap_servers
+        self.bootstrap_servers = bootstrap_servers or os.getenv(
+            "KAFKA_BOOTSTRAP_SERVERS", "kafka:9092"
+        )
         self.topic = topic
         self.max_retries = max_retries
         self.retry_delay = retry_delay
@@ -126,8 +130,8 @@ class OrderProducer:
             logger.error(f"Failed to publish cancellation to Kafka: {exc}")
             raise HTTPException(
                 status_code=500,
-                detail=f"Failed to publish order cancellation to Kafka: {exc}",
-            )
+                detail="Failed to submit order cancellation",
+            ) from exc
 
     async def send_order(self, order_record: OrderRecord) -> None:
         """
@@ -182,12 +186,12 @@ class OrderProducer:
                 orjson.dumps(kafka_record),
             )
             logger.info(f"Order {kafka_record['id']} successfully published to Kafka")
-        except KafkaError as e:
-            logger.error(f"Failed to publish order to Kafka: {e}")
+        except KafkaError as exc:
+            logger.error(f"Failed to publish order to Kafka: {exc}")
             raise HTTPException(
                 status_code=500,
-                detail=f"Failed to publish order to matching engine: {e}",
-            )
+                detail="Failed to submit order",
+            ) from exc
 
     async def check_health(self) -> bool:
         """
