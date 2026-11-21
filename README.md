@@ -13,13 +13,13 @@ and full REST API access via FastAPI.
 - **Order matching engine** – price-time priority matching for limit and market
   orders
 - **Real-time market data via WebSocket streaming** – server-push delta fan-out
-  at 2.7M msg/s with per-client backpressure, sequence-based reconnect recovery,
-  and 86% bandwidth reduction over snapshot polling
-- **UDP multicast market data feed** – O(1) fan-out with binary wire format,
-  sequence gap detection, and deterministic recovery via HTTP delta catchup or
-  full snapshot fallback, mirroring the architecture used by real exchanges
-  (e.g. CME MDP, Nasdaq ITCH) to ensure fair, simultaneous delivery to all
-  participants
+  with per-client bounded queues, sequence-based reconnect recovery, and 86%
+  bandwidth reduction over snapshot polling (mock-client unit benchmark reaches
+  2.7M enqueues/s; see [benchmark caveats](#websocket-benchmark-results))
+- **UDP multicast market data feed (experimental)** – binary wire format with
+  sequence gap detection and HTTP recovery fallback (inspired by CME MDP and
+  Nasdaq ITCH; the publisher is wired into the matching service, while the
+  subscriber is a standalone reference client not deployed in Docker Compose)
 - **Delta publishing** – sequence-based incremental order book updates with
   bounded buffer and snapshot fallback
 - **Advanced analytics** – VWAP calculations, trade metrics, market activity
@@ -180,10 +180,17 @@ orchestration overhead.
 
 ##### WebSocket Benchmark Results
 
-Fan-out throughput and push latency from order book operation to broadcast
+> **Note:** These unit benchmarks measure in-process `put_nowait` enqueue
+> throughput and enqueue latency (including the polling speedup comparison)
+> against mock WebSocket connections, not end-to-end network delivery or socket
+> I/O. The table below was recorded before slow-consumer disconnection on full
+> queues, when undrained mock queues dropped overflow messages rather than
+> delivering them.
+
+Fan-out throughput and push latency from order book operation to enqueue
 completion, measured with mock WebSocket connections:
 
-| Subscribers | Fan-Out (msg/s) | Push Latency p50 (μs) | Push Latency p99 (μs) |
+| Subscribers | Fan-Out (enqueues/s) | Push Latency p50 (μs) | Push Latency p99 (μs) |
 | ----------: | --------------: | --------------------: | --------------------: |
 |           1 |       2,103,421 |                  10.1 |                  31.5 |
 |          10 |       2,689,678 |                  13.2 |                  26.5 |
@@ -211,6 +218,11 @@ Delta streaming achieves an **86.1% bandwidth reduction** over snapshot polling
 (269 bytes vs 1,938 bytes average per update).
 
 ##### UDP Multicast vs WebSocket Benchmark Results
+
+> **Note:** Neither side in this unit benchmark measures real network I/O –
+> it compares publisher-side serialisation and a mocked UDP `sendto` against
+> in-process WebSocket `put_nowait` enqueues, excluding network transmission
+> and subscriber recovery.
 
 Publisher-side cost per broadcast comparing UDP multicast (single `sendto`) vs
 WebSocket (N `put_nowait` enqueues):
