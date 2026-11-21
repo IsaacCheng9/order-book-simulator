@@ -249,6 +249,7 @@ class OrderBook:
 
         return [
             {
+                "id": fill.id,
                 "price": fill.price,
                 "quantity": fill.quantity,
                 "buyer_order_id": fill.buyer_order_id,

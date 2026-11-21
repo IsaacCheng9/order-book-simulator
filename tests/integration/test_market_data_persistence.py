@@ -77,6 +77,7 @@ async def test_persist_batch_stores_jsonb_snapshot_and_trade(
 ) -> None:
     """Persist a complete market-data batch against the production schema."""
     stock_id = uuid4()
+    trade_id = uuid4()
     buyer_order_id = uuid4()
     seller_order_id = uuid4()
     snapshot = orjson.loads(
@@ -88,6 +89,7 @@ async def test_persist_batch_stores_jsonb_snapshot_and_trade(
                 "asks": [{"price": "101.00", "quantity": "5", "order_count": 1}],
                 "trades": [
                     {
+                        "id": str(trade_id),
                         "price": "100.50",
                         "quantity": "5",
                         "buyer_order_id": str(buyer_order_id),
@@ -134,17 +136,96 @@ async def test_persist_batch_stores_jsonb_snapshot_and_trade(
             {"stock_id": stock_id},
         )
         snapshot_row = snapshot_result.mappings().one()
-        trade_count = (
-            await session.execute(
-                text("""
-                    SELECT COUNT(*)
+        trade_ids = (
+            (
+                await session.execute(
+                    text("""
+                    SELECT id
                     FROM trade
                     WHERE stock_id = :stock_id
                 """),
-                {"stock_id": stock_id},
+                    {"stock_id": stock_id},
+                )
             )
-        ).scalar_one()
+            .scalars()
+            .all()
+        )
 
     assert snapshot_row["bids"] == snapshot["bids"]
     assert snapshot_row["asks"] == snapshot["asks"]
-    assert trade_count == 1
+    assert trade_ids == [trade_id]
+
+
+@pytest.mark.asyncio
+async def test_persist_batch_redelivery_does_not_duplicate_trades(
+    postgres_session_factory: async_sessionmaker[AsyncSession],
+) -> None:
+    """Skip duplicate trade rows when a persisted batch is redelivered."""
+    stock_id = uuid4()
+    trade_id = uuid4()
+    buyer_order_id = uuid4()
+    seller_order_id = uuid4()
+    snapshot = orjson.loads(
+        orjson.dumps(
+            {
+                "stock_id": str(stock_id),
+                "ticker": "TEST",
+                "bids": [],
+                "asks": [],
+                "trades": [
+                    {
+                        "id": str(trade_id),
+                        "price": "100.50",
+                        "quantity": "5",
+                        "buyer_order_id": str(buyer_order_id),
+                        "seller_order_id": str(seller_order_id),
+                        "timestamp": "2026-07-26T12:00:00+00:00",
+                    }
+                ],
+            }
+        )
+    )
+
+    async with postgres_session_factory() as session, session.begin():
+        await session.execute(
+            text("""
+                    INSERT INTO stock (
+                        id, ticker, company_name, min_order_size,
+                        max_order_size, price_precision
+                    )
+                    VALUES (
+                        :id, :ticker, :company_name, :min_order_size,
+                        :max_order_size, :price_precision
+                    )
+                """),
+            {
+                "id": stock_id,
+                "ticker": "TEST",
+                "company_name": "Test Company",
+                "min_order_size": 1,
+                "max_order_size": 1000,
+                "price_precision": 2,
+            },
+        )
+
+    consumer = MarketDataDBConsumer()
+    await consumer._persist_batch([snapshot])
+    await consumer._persist_batch([snapshot])
+
+    async with postgres_session_factory() as session:
+        trade_ids = (
+            (
+                await session.execute(
+                    text("""
+                    SELECT id
+                    FROM trade
+                    WHERE stock_id = :stock_id
+                """),
+                    {"stock_id": stock_id},
+                )
+            )
+            .scalars()
+            .all()
+        )
+
+    assert trade_ids == [trade_id]

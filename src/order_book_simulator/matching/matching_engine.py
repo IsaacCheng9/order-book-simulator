@@ -73,6 +73,8 @@ class MatchingEngine:
         # Serialise trades for Kafka and Redis.
         if trades:
             for trade in trades:
+                if "id" in trade:
+                    trade["id"] = str(trade["id"])
                 if "timestamp" not in trade:
                     trade["timestamp"] = datetime.now(UTC).isoformat()
                 trade["price"] = str(trade["price"])
