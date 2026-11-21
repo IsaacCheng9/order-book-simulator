@@ -288,3 +288,71 @@ def test_cancel_sell_order(order_book: OrderBook) -> None:
     assert success is True
     assert Decimal(100) not in order_book.ask_levels
     assert order["id"] not in order_book.order_id_to_order
+
+
+def test_duplicate_order_id_is_idempotent_noop(order_book: OrderBook) -> None:
+    """Ignore repeated internal order IDs without re-executing or mutating."""
+    sell = create_order(price=Decimal(100), quantity=Decimal(10), side=OrderSide.SELL)
+    order_book.add_order(sell)
+
+    buy = create_order(price=Decimal(100), quantity=Decimal(5), side=OrderSide.BUY)
+    first_trades = order_book.add_order(dict(buy))
+    seq_after_first = order_book.delta_buffer.current_sequence
+
+    # Redeliver same ID as both UUID and str.
+    repeat_uuid = order_book.add_order(dict(buy))
+    repeat_str = order_book.add_order({**buy, "id": str(buy["id"])})
+
+    assert len(first_trades) == 1
+    assert repeat_uuid == []
+    assert repeat_str == []
+    assert order_book.last_deltas == []
+    assert order_book.delta_buffer.current_sequence == seq_after_first
+    assert order_book.ask_levels[Decimal(100)].quantity == Decimal(5)
+
+
+def test_matching_is_deterministic_across_fresh_books() -> None:
+    """Produce identical fill IDs, timestamps, and deltas across two runs."""
+    stock_id = uuid4()
+    t1 = datetime(2026, 11, 21, 12, 0, 0, tzinfo=UTC)
+    t2 = datetime(2026, 11, 21, 12, 0, 1, tzinfo=UTC)
+    sell_id = uuid4()
+    buy_id = uuid4()
+
+    results = []
+    for _ in range(2):
+        book = OrderBook(stock_id=stock_id, ticker="AAPL")
+        book.add_order(
+            {
+                "id": str(sell_id),
+                "price": Decimal("100.00"),
+                "quantity": Decimal(10),
+                "side": OrderSide.SELL,
+                "order_type": OrderType.LIMIT,
+                "created_at": t1,
+            }
+        )
+        trades = book.add_order(
+            {
+                "id": buy_id,
+                "price": Decimal("100.00"),
+                "quantity": Decimal(6),
+                "side": OrderSide.BUY,
+                "order_type": OrderType.LIMIT,
+                "created_at": t2,
+            }
+        )
+        results.append((trades, book.delta_buffer.get_deltas_since(0)))
+
+    assert results[0] == results[1]
+
+
+def test_cancel_order_accepts_str_and_uuid_interchangeably(
+    order_book: OrderBook,
+) -> None:
+    """Normalise order IDs so str cancellations match UUID resting orders."""
+    order = create_order(price=Decimal(100), quantity=Decimal(10))
+    order_book.add_order(order)
+
+    assert order_book.cancel_order(str(order["id"])) is True
+    assert order["id"] not in order_book.order_id_to_order

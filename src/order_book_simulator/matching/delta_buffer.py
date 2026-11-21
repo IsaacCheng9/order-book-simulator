@@ -34,6 +34,7 @@ class DeltaBuffer:
         quantity: Decimal,
         order_count: int | None = None,
         trade_id: UUID | None = None,
+        timestamp: float | None = None,
     ) -> Delta:
         """
         Create a delta with the next sequence number and append it to the
@@ -47,6 +48,7 @@ class DeltaBuffer:
             quantity: The new total quantity at this level.
             order_count: Number of orders at this level.
             trade_id: The trade ID, only for TRADE deltas.
+            timestamp: Optional deterministic event timestamp (Unix seconds).
 
         Returns:
             The created Delta with its assigned sequence number.
@@ -54,7 +56,7 @@ class DeltaBuffer:
         self._sequence_number += 1
         new_delta = Delta(
             sequence_number=self._sequence_number,
-            timestamp=time.time(),
+            timestamp=time.time() if timestamp is None else timestamp,
             delta_type=delta_type,
             ticker=ticker,
             side=side,
@@ -65,6 +67,10 @@ class DeltaBuffer:
         )
         self._buffer.append(new_delta)
         return new_delta
+
+    def get_recent_deltas(self) -> list[Delta]:
+        """Return all deltas currently retained in the bounded buffer."""
+        return list(self._buffer)
 
     def get_deltas_since(self, sequence_number: int) -> list[Delta] | None:
         """

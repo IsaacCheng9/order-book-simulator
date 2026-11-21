@@ -111,6 +111,15 @@ class MatchingEngine:
             trades=trades,
         )
 
+    @staticmethod
+    def _parse_event_time(raw_value: Any) -> datetime:
+        """Resolve a deterministic event timestamp from a Kafka message."""
+        if isinstance(raw_value, datetime):
+            return raw_value
+        if isinstance(raw_value, str):
+            return datetime.fromisoformat(raw_value)
+        return datetime.now(UTC)
+
     async def cancel_order(self, cancel_message: dict[str, Any]) -> dict[str, Any]:
         """
         Cancels an order from the order book.
@@ -127,7 +136,10 @@ class MatchingEngine:
         if not order_book:
             return {"success": False, "reason": "Order book not found"}
 
-        is_success = order_book.cancel_order(order_id)
+        cancel_time = self._parse_event_time(cancel_message.get("cancelled_at"))
+        is_success = order_book.cancel_order(
+            order_id, timestamp=cancel_time.timestamp()
+        )
         if not is_success:
             return {"success": False, "reason": "Order not found"}
 
@@ -162,8 +174,12 @@ class MatchingEngine:
             order_book = OrderBook(stock_id, ticker)
             self.order_books[stock_id] = order_book
 
-        # Add timestamp of when the order was processed.
-        order_message["created_at"] = datetime.now(UTC)
+        # Derive deterministic processing time from the source record when
+        # available so startup replay reproduces identical timestamps.
+        event_time = self._parse_event_time(
+            order_message.get("gateway_received_at") or order_message.get("created_at")
+        )
+        order_message["created_at"] = event_time
         trades = order_book.add_order(order_message)
 
         # Cache the order book state.
