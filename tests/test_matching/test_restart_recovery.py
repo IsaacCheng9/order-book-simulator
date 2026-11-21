@@ -571,3 +571,214 @@ async def test_replay_handles_rejected_and_duplicate_orders_idempotently(
     assert book.delta_buffer.current_sequence == 1
     assert list(book.order_id_to_order.keys()) == [UUID(first_order_id)]
     assert book.order_id_to_order[UUID(first_order_id)].quantity == Decimal(10)
+
+
+@pytest.mark.asyncio
+async def test_replay_stall_raises_instead_of_skipping_committed_offsets(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    """Fail fast when replay stalls instead of syncing an incomplete book."""
+    stock_id = uuid4()
+    cluster = InMemoryKafkaCluster()
+    cluster.committed_offset = 2
+
+    class StalledConsumer(ReplayableKafkaConsumer):
+        async def getmany(self, *partitions, timeout_ms=0, max_records=None):
+            del timeout_ms, max_records
+            tp = partitions[0] if partitions else self._cluster.tp
+            return {tp: []}
+
+    StalledConsumer.cluster = cluster
+    StalledConsumer.stop_at_offset = None
+    monkeypatch.setattr(order_consumer_module, "AIOKafkaConsumer", StalledConsumer)
+
+    engine = MatchingEngine(AsyncMock(), MarketDataAnalytics(order_book_cache.redis))
+    with pytest.raises(RuntimeError, match="Startup replay stalled"):
+        await OrderConsumer(matching_engine=engine).start()
+
+    assert await order_book_cache.get_order_book(stock_id) is None
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("beginning_offset", [2, 5, 8])
+async def test_truncated_orders_log_fails_fast_on_startup_replay(
+    beginning_offset: int,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    """Raise on partial, complete, or past-committed log truncation."""
+    cluster = InMemoryKafkaCluster()
+    cluster.committed_offset = 5
+
+    class TruncatedConsumer(ReplayableKafkaConsumer):
+        async def beginning_offsets(self, partitions):
+            return dict.fromkeys(partitions, beginning_offset)
+
+    TruncatedConsumer.cluster = cluster
+    TruncatedConsumer.stop_at_offset = None
+    monkeypatch.setattr(order_consumer_module, "AIOKafkaConsumer", TruncatedConsumer)
+
+    engine = MatchingEngine(AsyncMock(), MarketDataAnalytics(order_book_cache.redis))
+    with pytest.raises(RuntimeError, match="truncated orders topic"):
+        await OrderConsumer(matching_engine=engine).start()
+
+
+@pytest.mark.asyncio
+async def test_delayed_assignment_poll_rewinds_prefetched_records(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    """Rewind records fetched while waiting for initial partition assignment."""
+    stock_id = uuid4()
+    base = datetime(2026, 7, 26, 12, 0, 0, tzinfo=UTC)
+    cluster = InMemoryKafkaCluster()
+    cluster.append(
+        {
+            "type": "order",
+            "id": str(uuid4()),
+            "stock_id": str(stock_id),
+            "ticker": "AAPL",
+            "side": "BUY",
+            "order_type": "LIMIT",
+            "price": "100.00",
+            "quantity": "10",
+            "gateway_received_at": base.isoformat(),
+        }
+    )
+
+    class DelayedAssignmentConsumer(ReplayableKafkaConsumer):
+        def __init__(self, *args: Any, **kwargs: Any) -> None:
+            super().__init__(*args, **kwargs)
+            self._assigned = False
+
+        def assignment(self) -> set[TopicPartition]:
+            return {self._cluster.tp} if self._assigned else set()
+
+        async def getmany(self, *partitions, timeout_ms=0, max_records=None):
+            self._assigned = True
+            return await super().getmany(
+                *partitions, timeout_ms=timeout_ms, max_records=max_records
+            )
+
+    DelayedAssignmentConsumer.cluster = cluster
+    DelayedAssignmentConsumer.stop_at_offset = None
+    monkeypatch.setattr(
+        order_consumer_module, "AIOKafkaConsumer", DelayedAssignmentConsumer
+    )
+
+    engine = MatchingEngine(AsyncMock(), MarketDataAnalytics(order_book_cache.redis))
+    await OrderConsumer(matching_engine=engine).start()
+
+    assert cluster.committed_offset == 1
+    assert stock_id in engine.order_books
+    assert engine.order_books[stock_id].delta_buffer.current_sequence == 1
+
+
+@pytest.mark.asyncio
+async def test_offset_zero_crash_with_dirty_redis_recovers_without_duplicates(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    """Recover cleanly when crashing before committing the very first offset."""
+    stock_id = uuid4()
+    base = datetime(2026, 7, 26, 12, 0, 0, tzinfo=UTC)
+    cluster = InMemoryKafkaCluster()
+    cluster.append(
+        {
+            "type": "order",
+            "id": str(uuid4()),
+            "stock_id": str(stock_id),
+            "ticker": "AAPL",
+            "side": "BUY",
+            "order_type": "LIMIT",
+            "price": "100.00",
+            "quantity": "10",
+            "gateway_received_at": base.isoformat(),
+        }
+    )
+
+    monkeypatch.setattr(
+        order_consumer_module, "AIOKafkaConsumer", ReplayableKafkaConsumer
+    )
+    ReplayableKafkaConsumer.cluster = cluster
+    ReplayableKafkaConsumer.stop_at_offset = None
+
+    # First run writes snapshot & deltas to Redis, then crashes before commit.
+    failing_producer = AsyncMock()
+    failing_producer.send_and_wait.side_effect = RuntimeError("broker timeout")
+    first_engine = MatchingEngine(
+        failing_producer, MarketDataAnalytics(order_book_cache.redis)
+    )
+    with pytest.raises(RuntimeError, match="broker timeout"):
+        await OrderConsumer(matching_engine=first_engine).start()
+    assert cluster.committed_offset is None
+    assert await order_book_cache.get_current_delta_sequence_number(stock_id) == 1
+
+    # Restart redelivers offset 0; store_deltas skips seq 1 without duplicating.
+    recovered_producer = AsyncMock()
+    recovered_engine = MatchingEngine(
+        recovered_producer, MarketDataAnalytics(order_book_cache.redis)
+    )
+    await OrderConsumer(matching_engine=recovered_engine).start()
+
+    assert cluster.committed_offset == 1
+    deltas = await order_book_cache.get_deltas_since(stock_id, 0)
+    assert deltas is not None
+    assert [d["sequence_number"] for d in deltas] == [1]
+
+
+@pytest.mark.asyncio
+async def test_malformed_cancel_timestamp_skipped_and_missing_uses_record_ts(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    """Skip malformed cancelled_at and fall back to Kafka timestamp when omitted."""
+    stock_id = uuid4()
+    order_id = str(uuid4())
+    base = datetime(2026, 7, 26, 12, 0, 0, tzinfo=UTC)
+
+    cluster = InMemoryKafkaCluster()
+    cluster.append(
+        {
+            "type": "order",
+            "id": order_id,
+            "stock_id": str(stock_id),
+            "ticker": "AAPL",
+            "side": "BUY",
+            "order_type": "LIMIT",
+            "price": "100.00",
+            "quantity": "10",
+            "gateway_received_at": base.isoformat(),
+        }
+    )
+    # Malformed cancelled_at should be skipped cleanly (committed, not crash).
+    cluster.append(
+        {
+            "type": "cancel",
+            "order_id": order_id,
+            "stock_id": str(stock_id),
+            "ticker": "AAPL",
+            "cancelled_at": "not-an-iso-timestamp",
+        }
+    )
+    # Valid cancel omitting cancelled_at derives timestamp from record.timestamp.
+    cancel_record = cluster.append(
+        {
+            "type": "cancel",
+            "order_id": order_id,
+            "stock_id": str(stock_id),
+            "ticker": "AAPL",
+        }
+    )
+
+    monkeypatch.setattr(
+        order_consumer_module, "AIOKafkaConsumer", ReplayableKafkaConsumer
+    )
+    ReplayableKafkaConsumer.cluster = cluster
+    ReplayableKafkaConsumer.stop_at_offset = None
+
+    engine = MatchingEngine(AsyncMock(), MarketDataAnalytics(order_book_cache.redis))
+    await OrderConsumer(matching_engine=engine).start()
+
+    assert cluster.committed_offset == 3
+    deltas = await order_book_cache.get_deltas_since(stock_id, 0)
+    assert deltas is not None
+    assert len(deltas) == 2
+    assert deltas[-1]["delta_type"] == "LEVEL_REMOVE"
+    assert deltas[-1]["timestamp"] == cancel_record.timestamp / 1000

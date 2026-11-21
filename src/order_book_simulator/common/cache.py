@@ -202,16 +202,23 @@ class OrderBookCache:
             return
 
         serialised_trades = [orjson.dumps(trade, default=str) for trade in new_trades]
-        await self.redis.rpush(key, *serialised_trades)  # pyrefly: ignore[not-async]
-        # Enforce the maximum trade history.
-        await self.redis.ltrim(key, -self.max_trade_history, -1)  # pyrefly: ignore[not-async]
+        if hasattr(self.redis, "pipeline"):
+            async with self.redis.pipeline(transaction=True) as pipe:
+                pipe.rpush(key, *serialised_trades)
+                pipe.ltrim(key, -self.max_trade_history, -1)
+                await pipe.execute()
+        else:
+            await self.redis.rpush(key, *serialised_trades)  # pyrefly: ignore[not-async]
+            # Enforce the maximum trade history.
+            await self.redis.ltrim(key, -self.max_trade_history, -1)  # pyrefly: ignore[not-async]
 
     async def store_deltas(self, stock_id: UUID, deltas: list[Delta]) -> None:
         """Append unseen deltas to Redis and advance the sequence watermark.
 
         Filters out deltas at or below the current cached sequence number so
-        reprocessing an uncommitted Kafka offset is idempotent. Trims to
-        MAX_DELTA_HISTORY to bound memory usage.
+        reprocessing an uncommitted Kafka offset is idempotent, and commits the
+        list append, trim, and sequence update atomically in a Redis
+        transaction.
 
         Args:
             stock_id: The stock ID.
@@ -229,12 +236,20 @@ class OrderBookCache:
         serialised_deltas: list[bytes] = [
             orjson.dumps(asdict(delta), default=str) for delta in new_deltas
         ]
-        # Store the deltas in Redis.
+        # Store the deltas and sequence watermark atomically in Redis.
         deltas_key = self._get_deltas_key(stock_id)
-        await self.redis.rpush(deltas_key, *serialised_deltas)  # pyrefly: ignore[not-async]
-        await self.redis.ltrim(deltas_key, -MAX_DELTA_HISTORY, -1)  # pyrefly: ignore[not-async]
         last_delta_seq_number = self._get_delta_seq_key(stock_id)
-        await self.redis.set(last_delta_seq_number, new_deltas[-1].sequence_number)
+        latest_seq = new_deltas[-1].sequence_number
+        if hasattr(self.redis, "pipeline"):
+            async with self.redis.pipeline(transaction=True) as pipe:
+                pipe.rpush(deltas_key, *serialised_deltas)
+                pipe.ltrim(deltas_key, -MAX_DELTA_HISTORY, -1)
+                pipe.set(last_delta_seq_number, latest_seq)
+                await pipe.execute()
+        else:
+            await self.redis.rpush(deltas_key, *serialised_deltas)  # pyrefly: ignore[not-async]
+            await self.redis.ltrim(deltas_key, -MAX_DELTA_HISTORY, -1)  # pyrefly: ignore[not-async]
+            await self.redis.set(last_delta_seq_number, latest_seq)
 
     async def replace_deltas(
         self,
@@ -242,7 +257,7 @@ class OrderBookCache:
         deltas: list[Delta],
         current_sequence: int,
     ) -> None:
-        """Replace cached deltas and sequence number after startup replay.
+        """Atomically replace cached deltas and sequence number after replay.
 
         Args:
             stock_id: The stock ID.
@@ -251,15 +266,22 @@ class OrderBookCache:
         """
         deltas_key = self._get_deltas_key(stock_id)
         seq_key = self._get_delta_seq_key(stock_id)
-        await self.redis.delete(deltas_key)
-        if deltas:
-            bounded_deltas = deltas[-MAX_DELTA_HISTORY:]
-            serialised_deltas = [
-                orjson.dumps(asdict(delta), default=str) for delta in bounded_deltas
-            ]
-            await self.redis.rpush(deltas_key, *serialised_deltas)  # pyrefly: ignore[not-async]
-            await self.redis.ltrim(deltas_key, -MAX_DELTA_HISTORY, -1)  # pyrefly: ignore[not-async]
-        await self.redis.set(seq_key, current_sequence)
+        bounded_deltas = deltas[-MAX_DELTA_HISTORY:] if MAX_DELTA_HISTORY > 0 else []
+        serialised_deltas = [
+            orjson.dumps(asdict(delta), default=str) for delta in bounded_deltas
+        ]
+        if hasattr(self.redis, "pipeline"):
+            async with self.redis.pipeline(transaction=True) as pipe:
+                pipe.delete(deltas_key)
+                if serialised_deltas:
+                    pipe.rpush(deltas_key, *serialised_deltas)
+                pipe.set(seq_key, current_sequence)
+                await pipe.execute()
+        else:
+            await self.redis.delete(deltas_key)
+            if serialised_deltas:
+                await self.redis.rpush(deltas_key, *serialised_deltas)  # pyrefly: ignore[not-async]
+            await self.redis.set(seq_key, current_sequence)
 
     async def publish_deltas(self, ticker: str, deltas: list[Delta]) -> None:
         """

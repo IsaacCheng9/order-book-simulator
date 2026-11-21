@@ -1,4 +1,4 @@
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from typing import Any
 from uuid import UUID, uuid5
@@ -18,6 +18,7 @@ from order_book_simulator.matching.delta_buffer import DeltaBuffer
 
 # Fixed namespace for deterministic UUIDv5 fill IDs across replays.
 FILL_ID_NAMESPACE = UUID("6f1e9c2a-8b4d-4f10-a91e-3c7d5e2b4a01")
+EPOCH = datetime(1970, 1, 1, tzinfo=UTC)
 
 
 def _coerce_uuid(value: UUID | str) -> UUID:
@@ -265,12 +266,20 @@ class OrderBook:
 
         raw_created_at = order.get("created_at")
         if isinstance(raw_created_at, datetime):
-            created_at = raw_created_at
+            created_at = (
+                raw_created_at
+                if raw_created_at.tzinfo is not None
+                else raw_created_at.replace(tzinfo=UTC)
+            )
         elif isinstance(raw_created_at, str):
-            created_at = datetime.fromisoformat(raw_created_at)
+            parsed = datetime.fromisoformat(raw_created_at)
+            created_at = (
+                parsed if parsed.tzinfo is not None else parsed.replace(tzinfo=UTC)
+            )
         else:
             created_at = datetime.now(UTC)
         event_timestamp = created_at.timestamp()
+        entry_time_us = (created_at - EPOCH) // timedelta(microseconds=1)
 
         # Create an OrderBookEntry from the incoming order dict.
         incoming_order = OrderBookEntry(
@@ -279,7 +288,7 @@ class OrderBook:
             side=side,
             quantity=quantity,
             price=price,
-            entry_time=int(event_timestamp * 1_000_000),
+            entry_time=entry_time_us,
         )
         self.processed_order_ids.add(order_id)
 

@@ -114,11 +114,16 @@ class MatchingEngine:
 
     @staticmethod
     def _parse_event_time(raw_value: Any) -> datetime:
-        """Resolve a deterministic event timestamp from a Kafka message."""
+        """Resolve a deterministic UTC event timestamp from a Kafka message."""
         if isinstance(raw_value, datetime):
-            return raw_value
+            return (
+                raw_value
+                if raw_value.tzinfo is not None
+                else raw_value.replace(tzinfo=UTC)
+            )
         if isinstance(raw_value, str):
-            return datetime.fromisoformat(raw_value)
+            parsed = datetime.fromisoformat(raw_value)
+            return parsed if parsed.tzinfo is not None else parsed.replace(tzinfo=UTC)
         return datetime.now(UTC)
 
     async def sync_state_to_cache(self) -> None:
@@ -218,8 +223,8 @@ class MatchingEngine:
         event_time = self._parse_event_time(
             order_message.get("gateway_received_at") or order_message.get("created_at")
         )
-        order_message["created_at"] = event_time
-        trades = order_book.add_order(order_message)
+        order_payload = {**order_message, "created_at": event_time}
+        trades = order_book.add_order(order_payload)
 
         if not publish:
             return

@@ -1,6 +1,6 @@
 import asyncio
 import logging
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from decimal import Decimal, InvalidOperation
 from typing import Any
 from uuid import UUID
@@ -16,6 +16,7 @@ from order_book_simulator.matching.order_book import OrderRejectionError
 from order_book_simulator.multicast.multicast_publisher import MulticastPublisher
 
 logger = logging.getLogger(__name__)
+EPOCH = datetime(1970, 1, 1, tzinfo=UTC)
 
 # Exceptions that indicate the Kafka message cannot be parsed or does
 # not match the consumer envelope contract. These are skipped with
@@ -191,6 +192,13 @@ class OrderConsumer:
         self._validate_uuid(self._require_string(order_data, "order_id"), "order_id")
         self._validate_uuid(self._require_string(order_data, "stock_id"), "stock_id")
         self._require_string(order_data, "ticker")
+        raw_cancelled_at = order_data.get("cancelled_at")
+        if raw_cancelled_at is not None:
+            if not isinstance(raw_cancelled_at, str) or not raw_cancelled_at:
+                raise TypeError("cancelled_at must be a non-empty ISO timestamp string")
+            parsed = datetime.fromisoformat(raw_cancelled_at)
+            if parsed.tzinfo is None:
+                raise ValueError("cancelled_at must include a timezone")
 
     async def _process_message(
         self,
@@ -235,6 +243,16 @@ class OrderConsumer:
             return
 
         if message_type == "cancel":
+            # Ensure a deterministic cancel timestamp from the Kafka record
+            # when the producer omitted cancelled_at.
+            if (
+                order_data.get("cancelled_at") is None
+                and message.timestamp is not None
+                and message.timestamp >= 0
+            ):
+                order_data["cancelled_at"] = (
+                    EPOCH + timedelta(milliseconds=message.timestamp)
+                ).isoformat()
             if publish:
                 logger.info(f"Processing cancellation: {order_id=}")
                 result = await self.matching_engine.cancel_order(order_data)
@@ -351,6 +369,22 @@ class OrderConsumer:
             self.consumer.assignment(),
             key=lambda tp: (tp.topic, tp.partition),
         )
+        # If assignment has not settled yet, trigger a brief poll before
+        # checking again so startup replay never silently skips assigned work.
+        # Rewind any records prefetched during assignment so fresh partitions
+        # never lose their first batch.
+        if not partitions:
+            for _ in range(5):
+                prefetched = await self.consumer.getmany(timeout_ms=200)
+                for tp, records in prefetched.items():
+                    if records:
+                        self.consumer.seek(tp, records[0].offset)
+                partitions = sorted(
+                    self.consumer.assignment(),
+                    key=lambda tp: (tp.topic, tp.partition),
+                )
+                if partitions:
+                    break
         if not partitions:
             return
 
@@ -359,16 +393,16 @@ class OrderConsumer:
         for tp in partitions:
             committed_offset = await self.consumer.committed(tp)
             beginning_offset = beginning_offsets.get(tp, 0)
-            if committed_offset is None or committed_offset <= beginning_offset:
+            if committed_offset is None or committed_offset == 0:
                 continue
             if beginning_offset > 0:
-                logger.warning(
-                    "Orders topic retention trimmed early offsets before replay: "
+                raise RuntimeError(
+                    "Cannot rebuild order books from truncated orders topic: "
                     f"topic={tp.topic}, partition={tp.partition}, "
                     f"beginning_offset={beginning_offset}, "
                     f"committed_offset={committed_offset}"
                 )
-            replay_targets.append((tp, beginning_offset, committed_offset))
+            replay_targets.append((tp, 0, committed_offset))
 
         if not replay_targets:
             return
@@ -388,13 +422,12 @@ class OrderConsumer:
                             break
                     empty_polls += 1
                     if empty_polls >= 5:
-                        logger.warning(
-                            "Stopped replay early after empty polls: "
+                        raise RuntimeError(
+                            "Startup replay stalled before reaching committed offset: "
                             f"topic={tp.topic}, partition={tp.partition}, "
                             f"next_offset={next_offset}, "
                             f"target_offset={target_offset}"
                         )
-                        break
                     continue
 
                 empty_polls = 0

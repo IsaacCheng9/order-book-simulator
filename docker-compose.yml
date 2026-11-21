@@ -59,6 +59,7 @@ services:
 
   kafka-init:
     image: confluentinc/cp-kafka:latest
+    restart: on-failure
     depends_on:
       kafka:
         condition: service_healthy
