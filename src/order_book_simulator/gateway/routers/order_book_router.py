@@ -168,26 +168,25 @@ async def get_deltas(
             detail=f"No stock found with ticker {ticker}",
         )
 
-    deltas: list[dict[str, Any]] | None = await order_book_cache.get_deltas_since(
-        stock.id, sequence_number
-    )
-    cur_delta_seq_number = await order_book_cache.get_current_delta_sequence_number(
-        stock.id
-    )
+    (
+        deltas,
+        cur_delta_seq_number,
+    ) = await order_book_cache.get_deltas_since_with_sequence(stock.id, sequence_number)
 
-    # If deltas are available, return them, otherwise use the snapshot as a
-    # fallback.
+    # If deltas are available, return them, otherwise use an atomic snapshot
+    # plus sequence cursor as a fallback.
     if deltas is not None:
         return {
             "deltas": deltas,
             "current_delta_sequence_number": cur_delta_seq_number,
         }
-    else:
-        snapshot = await order_book_cache.get_order_book(stock.id)
-        return {
-            "snapshot": snapshot,
-            "current_delta_sequence_number": cur_delta_seq_number,
-        }
+    snapshot, snapshot_seq = await order_book_cache.get_order_book_with_sequence(
+        stock.id
+    )
+    return {
+        "snapshot": snapshot,
+        "current_delta_sequence_number": snapshot_seq,
+    }
 
 
 @order_book_router.get("/{ticker}")
@@ -211,7 +210,10 @@ async def get_order_book(
             detail=f"No stock found with ticker {ticker}",
         )
 
-    snapshot = await order_book_cache.get_order_book(stock.id)
+    (
+        snapshot,
+        cur_delta_seq_number,
+    ) = await order_book_cache.get_order_book_with_sequence(stock.id)
     trades = await order_book_cache.get_trades(stock.id)
 
     if not snapshot:
@@ -225,4 +227,5 @@ async def get_order_book(
         "timestamp": datetime.now(UTC).isoformat(),
         "book": snapshot,
         "trades": trades,
+        "current_delta_sequence_number": cur_delta_seq_number,
     }

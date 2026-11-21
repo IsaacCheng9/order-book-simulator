@@ -1,8 +1,12 @@
 import asyncio
+import logging
+import math
 import socket
 import struct
 
 from order_book_simulator.multicast.wire_format import DELTA, HEARTBEAT, encode
+
+logger = logging.getLogger(__name__)
 
 
 class MulticastPublisher:
@@ -30,22 +34,27 @@ class MulticastPublisher:
         )
         self._stop_event: asyncio.Event = asyncio.Event()
         self._heartbeat_task: asyncio.Task[None] | None = None
+        self._latest_sequences: dict[str, int] = {}
 
     async def _heartbeat_loop(self, interval_seconds: float) -> None:
         """
-        Sends periodic heartbeats until the stop event is set.
+        Send periodic heartbeats carrying each active symbol's latest sequence.
 
-        Uses asyncio.wait_for on the stop event so that `stop_heartbeat_task()`
-        wakes the loop immediately instead of waiting for the sleep interval to
-        elapse.
+        Uses asyncio.wait_for on the stop event so stop_heartbeat_task() wakes
+        the loop immediately instead of waiting for the sleep interval.
 
         Args:
             interval_seconds: Seconds between heartbeats.
         """
         while not self._stop_event.is_set():
-            # Send a heartbeat with sequence number 0 as heartbeats carry no
-            # data, meaning they don't need real sequence numbers.
-            self.send_heartbeat(0)
+            try:
+                if self._latest_sequences:
+                    for symbol, seq in list(self._latest_sequences.items()):
+                        self.send_heartbeat(symbol, seq)
+                else:
+                    self.send_heartbeat("", 0)
+            except OSError as exc:
+                logger.warning(f"Multicast heartbeat send failed: {exc}")
             try:
                 await asyncio.wait_for(
                     self._stop_event.wait(),
@@ -56,36 +65,49 @@ class MulticastPublisher:
                 # Interval elapsed - send next heartbeat.
                 continue
 
-    def send(self, sequence_number: int, payload: bytes) -> None:
+    def send(self, symbol: str, sequence_number: int, payload: bytes) -> None:
         """
-        Sends a delta message to the multicast group.
+        Send a per-symbol delta message to the multicast group.
 
         Args:
-            sequence_number: The delta sequence number.
-            payload: The serialised delta payload bytes.
+            symbol: Ticker symbol identifying the stream.
+            sequence_number: Per-symbol delta sequence number.
+            payload: Serialised delta payload bytes.
         """
-        message = encode(DELTA, sequence_number, payload)
+        message = encode(DELTA, sequence_number, payload, symbol=symbol)
         self.socket.sendto(message, (self.group, self.port))
+        self._latest_sequences[symbol] = max(
+            sequence_number, self._latest_sequences.get(symbol, 0)
+        )
 
-    def send_heartbeat(self, sequence_number: int) -> None:
+    def send_heartbeat(self, symbol: str, sequence_number: int) -> None:
         """
-        Sends a heartbeat message with an empty payload.
-
-        Allows subscribers to detect a dead stream if heartbeats stop arriving.
+        Send a heartbeat message carrying the current sequence for a symbol.
 
         Args:
-            sequence_number: The current sequence number.
+            symbol: Ticker symbol, or empty string when idle with no symbols.
+            sequence_number: Latest published sequence number for the symbol.
         """
-        message = encode(HEARTBEAT, sequence_number, b"")
+        message = encode(HEARTBEAT, sequence_number, b"", symbol=symbol)
         self.socket.sendto(message, (self.group, self.port))
 
     async def start_heartbeat_task(self, interval_seconds: float = 1.0) -> None:
         """
-        Starts the background heartbeat loop.
+        Start (or restart) the background heartbeat loop.
 
         Args:
-            interval_seconds: Seconds between heartbeats.
+            interval_seconds: Seconds between heartbeats (must be positive).
+
+        Raises:
+            ValueError: If interval_seconds is not positive.
         """
+        if not math.isfinite(interval_seconds) or interval_seconds <= 0:
+            raise ValueError("interval_seconds must be a finite positive number.")
+        while self._heartbeat_task is not None and not self._heartbeat_task.done():
+            if not self._stop_event.is_set():
+                return
+            await self._heartbeat_task
+        self._stop_event.clear()
         self._heartbeat_task = asyncio.create_task(
             self._heartbeat_loop(interval_seconds)
         )

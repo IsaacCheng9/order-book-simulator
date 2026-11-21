@@ -51,7 +51,9 @@ class MatchingEngine:
         if self.multicast_publisher:
             for delta in deltas:
                 self.multicast_publisher.send(
-                    delta.sequence_number, orjson.dumps(asdict(delta), default=str)
+                    delta.ticker,
+                    delta.sequence_number,
+                    orjson.dumps(asdict(delta), default=str),
                 )
 
     async def _publish_market_data(
