@@ -192,9 +192,13 @@ class OrderConsumer:
         self._validate_uuid(self._require_string(order_data, "stock_id"), "stock_id")
         self._require_string(order_data, "ticker")
 
-    async def _process_message(self, message: ConsumerRecord) -> None:
-        """
-        Processes a single message from Kafka.
+    async def _process_message(
+        self,
+        message: ConsumerRecord,
+        *,
+        publish: bool = True,
+    ) -> None:
+        """Process a single message from Kafka.
 
         Malformed or unknown messages are logged with full context and
         skipped. Unexpected errors propagate so the consumer crashes
@@ -202,6 +206,8 @@ class OrderConsumer:
 
         Args:
             message: The message received from Kafka.
+            publish: Whether downstream side effects should be emitted.
+                Set to False during startup replay up to committed offsets.
         """
         order_id: str | None = None
         message_type: str | None = None
@@ -229,15 +235,25 @@ class OrderConsumer:
             return
 
         if message_type == "cancel":
-            logger.info(f"Processing cancellation: {order_id=}")
-            result = await self.matching_engine.cancel_order(order_data)
-            logger.info(f"Cancelled order {order_id=}: {result}")
+            if publish:
+                logger.info(f"Processing cancellation: {order_id=}")
+                result = await self.matching_engine.cancel_order(order_data)
+                logger.info(f"Cancelled order {order_id=}: {result}")
+            else:
+                await self.matching_engine.cancel_order(order_data, publish=False)
             return
 
         if message_type == "order":
             if gateway_time is None:
                 raise RuntimeError("Order message was parsed without gateway time.")
-            # Track the latency for new orders.
+            if not publish:
+                try:
+                    await self.matching_engine.process_order(order_data, publish=False)
+                except OrderRejectionError as exc:
+                    self._log_rejected_order(message, exc, order_id)
+                return
+
+            # Track the latency for live orders.
             kafka_latency = (datetime.now(UTC) - gateway_time).total_seconds() * 1000
             logger.info(
                 f"Processing order: {order_id=}, kafka_latency={kafka_latency:.2f}ms"
@@ -310,6 +326,96 @@ class OrderConsumer:
             f"payload={payload_repr!r}"
         )
 
+    async def _replay_committed_orders(self) -> None:
+        """Rebuild in-memory order books by replaying committed Kafka offsets.
+
+        Reads each assigned partition from its earliest available offset up to
+        its last committed offset with downstream publishing suppressed, seeks
+        back to the committed offset, and syncs rebuilt snapshots and delta
+        buffers to Redis before live consumption resumes.
+        """
+        if self.consumer is None:
+            return
+
+        required_methods = (
+            "assignment",
+            "committed",
+            "beginning_offsets",
+            "seek",
+            "getmany",
+        )
+        if not all(hasattr(self.consumer, method) for method in required_methods):
+            return
+
+        partitions = sorted(
+            self.consumer.assignment(),
+            key=lambda tp: (tp.topic, tp.partition),
+        )
+        if not partitions:
+            return
+
+        beginning_offsets = await self.consumer.beginning_offsets(partitions)
+        replay_targets: list[tuple[Any, int, int]] = []
+        for tp in partitions:
+            committed_offset = await self.consumer.committed(tp)
+            beginning_offset = beginning_offsets.get(tp, 0)
+            if committed_offset is None or committed_offset <= beginning_offset:
+                continue
+            if beginning_offset > 0:
+                logger.warning(
+                    "Orders topic retention trimmed early offsets before replay: "
+                    f"topic={tp.topic}, partition={tp.partition}, "
+                    f"beginning_offset={beginning_offset}, "
+                    f"committed_offset={committed_offset}"
+                )
+            replay_targets.append((tp, beginning_offset, committed_offset))
+
+        if not replay_targets:
+            return
+
+        replayed_count = 0
+        for tp, start_offset, target_offset in replay_targets:
+            self.consumer.seek(tp, start_offset)
+            next_offset = start_offset
+            empty_polls = 0
+            while next_offset < target_offset:
+                batches = await self.consumer.getmany(tp, timeout_ms=1000)
+                records = batches.get(tp, [])
+                if not records:
+                    if hasattr(self.consumer, "position"):
+                        current_pos = await self.consumer.position(tp)
+                        if current_pos >= target_offset:
+                            break
+                    empty_polls += 1
+                    if empty_polls >= 5:
+                        logger.warning(
+                            "Stopped replay early after empty polls: "
+                            f"topic={tp.topic}, partition={tp.partition}, "
+                            f"next_offset={next_offset}, "
+                            f"target_offset={target_offset}"
+                        )
+                        break
+                    continue
+
+                empty_polls = 0
+                for record in records:
+                    if record.offset >= target_offset:
+                        next_offset = target_offset
+                        break
+                    await self._process_message(record, publish=False)
+                    replayed_count += 1
+                    next_offset = record.offset + 1
+
+            # Restore exact fetch cursor so live consumption begins at the
+            # first uncommitted offset without dropping or double-replaying.
+            self.consumer.seek(tp, target_offset)
+
+        await self.matching_engine.sync_state_to_cache()
+        logger.info(
+            f"Replayed {replayed_count} committed order messages across "
+            f"{len(replay_targets)} partition(s) and synced Redis cache."
+        )
+
     async def start(self) -> None:
         """Starts consuming order messages with retry logic."""
         self.consumer = AIOKafkaConsumer(
@@ -349,6 +455,7 @@ class OrderConsumer:
                 await asyncio.sleep(self.retry_delay)
 
         try:
+            await self._replay_committed_orders()
             async for message in self.consumer:
                 await self._process_message(message)
                 # Commit only after _process_message returns. Unexpected

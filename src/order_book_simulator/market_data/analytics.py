@@ -92,13 +92,13 @@ class MarketDataAnalytics:
         last_trade_price: Decimal | None,
         last_trade_quantity: Decimal | None,
         trades: list[dict[str, Any]] | None = None,
+        sequence_number: int | None = None,
     ) -> None:
-        """
-        Records order book state to Redis Stream using actual PriceLevels.
+        """Record order book state to Redis Stream using actual PriceLevels.
 
-        This is more efficient than record_state() because it takes the actual
-        PriceLevel objects from the order book, avoiding the need to
-        reconstruct them from serialised data.
+        When sequence_number is supplied, skip appending if the latest stream
+        entry already recorded that sequence number or a newer one so crash
+        replay of an uncommitted Kafka offset does not duplicate entries.
 
         Args:
             stock_id: Unique identifier of the stock.
@@ -107,7 +107,25 @@ class MarketDataAnalytics:
             last_trade_price: Price of the last trade, if any.
             last_trade_quantity: Quantity of the last trade, if any.
             trades: All fills executed during this book update, if any.
+            sequence_number: Optional monotonic delta sequence watermark.
         """
+        stream_key = self._get_stream_key(stock_id)
+        if sequence_number is not None:
+            latest = await self.redis.xrevrange(stream_key, max="+", min="-", count=1)
+            if latest:
+                latest_fields = latest[0][1]
+                raw_seq = latest_fields.get("sequence_number")
+                if raw_seq is None:
+                    raw_seq = latest_fields.get(b"sequence_number")
+                if raw_seq is not None:
+                    decoded_seq = (
+                        raw_seq.decode()
+                        if isinstance(raw_seq, (bytes, bytearray))
+                        else str(raw_seq)
+                    )
+                    if int(decoded_seq) >= sequence_number:
+                        return
+
         best_bid = max(bid_levels, key=lambda x: x.price).price if bid_levels else None
         best_ask = min(ask_levels, key=lambda x: x.price).price if ask_levels else None
 
@@ -148,8 +166,9 @@ class MarketDataAnalytics:
             "trade_notional": str(trade_notional) if trade_volume > 0 else "",
             "trade_volume": str(trade_volume) if trade_volume > 0 else "",
         }
+        if sequence_number is not None:
+            market_data["sequence_number"] = str(sequence_number)
 
-        stream_key = self._get_stream_key(stock_id)
         await self.redis.xadd(
             stream_key,
             cast(dict[FieldT, EncodableT], market_data),

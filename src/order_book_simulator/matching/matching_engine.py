@@ -109,6 +109,7 @@ class MatchingEngine:
             last_trade_price=Decimal(trades[-1]["price"]) if trades else None,
             last_trade_quantity=Decimal(trades[-1]["quantity"]) if trades else None,
             trades=trades,
+            sequence_number=order_book.delta_buffer.current_sequence,
         )
 
     @staticmethod
@@ -120,12 +121,35 @@ class MatchingEngine:
             return datetime.fromisoformat(raw_value)
         return datetime.now(UTC)
 
-    async def cancel_order(self, cancel_message: dict[str, Any]) -> dict[str, Any]:
+    async def sync_state_to_cache(self) -> None:
+        """Sync rebuilt in-memory order books and delta buffers to Redis.
+
+        Called once after startup Kafka replay completes so Redis holds the
+        current snapshot, bounded delta history, and sequence watermark for
+        every recovered stock, even if Redis started empty.
         """
-        Cancels an order from the order book.
+        for stock_id, order_book in self.order_books.items():
+            await order_book_cache.set_order_book(
+                stock_id, order_book.get_full_snapshot()
+            )
+            await order_book_cache.replace_deltas(
+                stock_id,
+                order_book.delta_buffer.get_recent_deltas(),
+                order_book.delta_buffer.current_sequence,
+            )
+
+    async def cancel_order(
+        self,
+        cancel_message: dict[str, Any],
+        *,
+        publish: bool = True,
+    ) -> dict[str, Any]:
+        """Cancel an order from the order book.
 
         Args:
             cancel_message: Dictionary containing order_id and stock_id.
+            publish: Whether to publish downstream Redis, Kafka, analytics,
+                and multicast side effects. Set to False during startup replay.
 
         Returns:
             Dictionary with cancellation result.
@@ -143,7 +167,11 @@ class MatchingEngine:
         if not is_success:
             return {"success": False, "reason": "Order not found"}
 
-        # Update the order book cache.
+        if not publish:
+            return {"success": True, "reason": "Order cancelled"}
+
+        # Update the order book cache. Redis Pub/Sub and UDP multicast remain
+        # at-least-once on crash replay; clients deduplicate by sequence number.
         await order_book_cache.set_order_book(stock_id, order_book.get_full_snapshot())
         deltas = order_book.last_deltas
         if deltas:
@@ -160,12 +188,18 @@ class MatchingEngine:
         )
         return {"success": True, "reason": "Order cancelled"}
 
-    async def process_order(self, order_message: dict[str, Any]) -> None:
-        """
-        Processes an incoming order message.
+    async def process_order(
+        self,
+        order_message: dict[str, Any],
+        *,
+        publish: bool = True,
+    ) -> None:
+        """Process an incoming order message.
 
         Args:
             order_message: The deserialised order message from Kafka.
+            publish: Whether to publish downstream Redis, Kafka, analytics,
+                and multicast side effects. Set to False during startup replay.
         """
         stock_id = UUID(order_message["stock_id"])
         ticker = order_message["ticker"]
@@ -173,6 +207,11 @@ class MatchingEngine:
         if not order_book:
             order_book = OrderBook(stock_id, ticker)
             self.order_books[stock_id] = order_book
+
+        order_id = order_message["id"]
+        normalised_id = order_id if isinstance(order_id, UUID) else UUID(str(order_id))
+        if normalised_id in order_book.processed_order_ids:
+            return
 
         # Derive deterministic processing time from the source record when
         # available so startup replay reproduces identical timestamps.
@@ -182,7 +221,11 @@ class MatchingEngine:
         order_message["created_at"] = event_time
         trades = order_book.add_order(order_message)
 
-        # Cache the order book state.
+        if not publish:
+            return
+
+        # Cache the order book state. Redis Pub/Sub and UDP multicast remain
+        # at-least-once on crash replay; clients deduplicate by sequence number.
         await order_book_cache.set_order_book(stock_id, order_book.get_full_snapshot())
         deltas = order_book.last_deltas
         if deltas:
