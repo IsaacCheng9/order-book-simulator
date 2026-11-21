@@ -4,6 +4,9 @@ on:
   push:
   workflow_dispatch:
 
+permissions:
+  contents: read
+
 jobs:
   test:
     runs-on: ubuntu-latest
@@ -30,9 +33,6 @@ jobs:
 
     steps:
       - uses: actions/checkout@main
-
-      - name: Switch to current branch
-        run: git checkout ${{ env.BRANCH }}
 
       - name: Set up Python ${{ matrix.python-version }}
         uses: actions/setup-python@main
