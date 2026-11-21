@@ -57,6 +57,19 @@ services:
     volumes:
       - kafka_data:/var/lib/kafka/data
 
+  kafka-init:
+    image: confluentinc/cp-kafka:latest
+    restart: on-failure
+    depends_on:
+      kafka:
+        condition: service_healthy
+    command:
+      - /bin/sh
+      - -ec
+      - |
+        kafka-topics --bootstrap-server kafka:9092 --create --if-not-exists --topic orders --partitions 1 --replication-factor 1 --config retention.ms=-1 --config retention.bytes=-1
+        kafka-configs --bootstrap-server kafka:9092 --entity-type topics --entity-name orders --alter --add-config retention.ms=-1,retention.bytes=-1
+
   gateway:
     build:
       context: .
@@ -64,6 +77,8 @@ services:
     depends_on:
       kafka:
         condition: service_healthy
+      kafka-init:
+        condition: service_completed_successfully
       postgres:
         condition: service_healthy
       redis:
@@ -79,9 +94,12 @@ services:
     build:
       context: .
       dockerfile: docker/Dockerfile.matching
+    restart: unless-stopped
     depends_on:
       kafka:
         condition: service_healthy
+      kafka-init:
+        condition: service_completed_successfully
       redis:
         condition: service_healthy
 

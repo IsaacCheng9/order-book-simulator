@@ -293,6 +293,17 @@ def mock_redis():
         async def mget(self, keys: list[str]) -> list[RedisScalar | None]:
             return [await self.get(key) for key in keys]
 
+        async def delete(self, *keys: str) -> int:
+            deleted = 0
+            for key in keys:
+                if key in mock_data:
+                    del mock_data[key]
+                    deleted += 1
+                if key in streams:
+                    del streams[key]
+                    deleted += 1
+            return deleted
+
         def pipeline(self, transaction: bool = True):
             redis_ref = self
 
@@ -305,6 +316,22 @@ def mock_redis():
 
                 async def __aexit__(self, exc_type, exc, tb) -> None:
                     return None
+
+                def delete(self, *keys: str):
+                    self._ops.append(("delete", keys))
+                    return self
+
+                def rpush(self, key: str, *values: RedisScalar):
+                    self._ops.append(("rpush", (key, *values)))
+                    return self
+
+                def ltrim(self, key: str, start: int, end: int):
+                    self._ops.append(("ltrim", (key, start, end)))
+                    return self
+
+                def set(self, key: str, value: RedisScalar):
+                    self._ops.append(("set", (key, value)))
+                    return self
 
                 def lrange(self, key: str, start: int, end: int):
                     self._ops.append(("lrange", (key, start, end)))
