@@ -32,6 +32,8 @@ class MarketDataDBConsumer:
         batch_timeout_ms: int = 100,
         max_flush_retries: int = 3,
         retry_backoff_ms: int = 100,
+        max_retries: int = 5,
+        retry_delay: int = 5,
     ):
         """
         Creates a new market data DB consumer.
@@ -44,6 +46,8 @@ class MarketDataDBConsumer:
             batch_timeout_ms: Timeout for batch processing in milliseconds.
             max_flush_retries: Maximum attempts to persist a failed batch.
             retry_backoff_ms: Delay between failed persistence attempts.
+            max_retries: Maximum Kafka startup connection attempts.
+            retry_delay: Delay between Kafka startup connection retries in seconds.
         """
         self.consumer: AIOKafkaConsumer | None = None
         self.bootstrap_servers: str = bootstrap_servers
@@ -55,6 +59,8 @@ class MarketDataDBConsumer:
         self.batch_timeout: float = batch_timeout_ms / 1000.0
         self.max_flush_retries: int = max_flush_retries
         self.retry_backoff: float = retry_backoff_ms / 1000.0
+        self.max_retries: int = max_retries
+        self.retry_delay: int = retry_delay
         self.last_flush: float = time.time()
 
     async def _flush_batch(self) -> None:
@@ -175,10 +181,31 @@ class MarketDataDBConsumer:
             bootstrap_servers=self.bootstrap_servers,
             group_id=self.group_id,
             enable_auto_commit=False,
+            auto_offset_reset="earliest",
         )
-        await self.consumer.start()
-        logger.info(f"Started consuming from {self.topic} on {self.bootstrap_servers}")
+        for attempt in range(self.max_retries):
+            try:
+                await self.consumer.start()
+                logger.info(
+                    f"Started consuming from {self.topic} on {self.bootstrap_servers}"
+                )
+                break
+            except Exception as exc:
+                if attempt == self.max_retries - 1:
+                    logger.error(
+                        f"Failed to connect to Kafka after {self.max_retries} "
+                        f"attempts: {exc!s}"
+                    )
+                    await self.stop()
+                    raise
+                logger.warning(
+                    "Failed to connect to Kafka (attempt "
+                    f"{attempt + 1}/{self.max_retries}). "
+                    f"Retrying in {self.retry_delay} seconds..."
+                )
+                await asyncio.sleep(self.retry_delay)
 
+        flush_failed = False
         try:
             while True:
                 records = await self.consumer.getmany(
@@ -201,16 +228,27 @@ class MarketDataDBConsumer:
 
                         self._add_to_batch(data, message)
                         if self._should_flush():
-                            await self._flush_batch()
+                            try:
+                                await self._flush_batch()
+                            except Exception:
+                                flush_failed = True
+                                raise
 
                 if self._should_flush():
-                    await self._flush_batch()
+                    try:
+                        await self._flush_batch()
+                    except Exception:
+                        flush_failed = True
+                        raise
         finally:
-            await self._flush_batch()
-            await self.consumer.stop()
-            logger.info(
-                f"Stopped consuming from {self.topic} on {self.bootstrap_servers}"
-            )
+            try:
+                if not flush_failed:
+                    await self._flush_batch()
+            finally:
+                await self.stop()
+                logger.info(
+                    f"Stopped consuming from {self.topic} on {self.bootstrap_servers}"
+                )
 
     async def stop(self) -> None:
         """
@@ -218,6 +256,7 @@ class MarketDataDBConsumer:
         """
         if self.consumer:
             await self.consumer.stop()
+            self.consumer = None
 
 
 async def main():

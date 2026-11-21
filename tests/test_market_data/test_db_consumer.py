@@ -21,6 +21,7 @@ class FakeKafkaConsumer:
     """Provide a controllable Kafka consumer for DB consumer tests."""
 
     poll_results: ClassVar[list[Any]] = []
+    start_errors: ClassVar[list[Exception]] = []
     last_instance: ClassVar[FakeKafkaConsumer | None] = None
 
     def __init__(self, *args: Any, **kwargs: Any) -> None:
@@ -28,12 +29,16 @@ class FakeKafkaConsumer:
         self.kwargs = kwargs
         self.commits: list[dict[TopicPartition, int]] = []
         self.getmany_calls: list[dict[str, Any]] = []
+        self.start_attempts = 0
         self.started = False
         self.stopped = False
         FakeKafkaConsumer.last_instance = self
 
     async def start(self) -> None:
-        """Record that the fake consumer was started."""
+        """Record that the fake consumer was started or raise a scripted error."""
+        self.start_attempts += 1
+        if self.__class__.start_errors:
+            raise self.__class__.start_errors.pop(0)
         self.started = True
 
     async def stop(self) -> None:
@@ -98,9 +103,11 @@ def make_record(
 def use_fake_kafka(
     monkeypatch: pytest.MonkeyPatch,
     poll_results: list[Any],
+    start_errors: list[Exception] | None = None,
 ) -> None:
     """Patch the DB consumer to use a fake Kafka consumer."""
     FakeKafkaConsumer.poll_results = poll_results
+    FakeKafkaConsumer.start_errors = list(start_errors or [])
     FakeKafkaConsumer.last_instance = None
     monkeypatch.setattr(db_consumer_module, "AIOKafkaConsumer", FakeKafkaConsumer)
 
@@ -327,6 +334,7 @@ async def test_start_disables_auto_commit(
     fake_consumer = FakeKafkaConsumer.last_instance
     assert fake_consumer is not None
     assert fake_consumer.kwargs["enable_auto_commit"] is False
+    assert fake_consumer.kwargs["auto_offset_reset"] == "earliest"
     assert fake_consumer.stopped is True
 
 
@@ -492,4 +500,81 @@ async def test_start_retains_skipped_offset_when_earlier_persistence_fails(
     fake_consumer = FakeKafkaConsumer.last_instance
     assert fake_consumer is not None
     assert fake_consumer.commits == []
+    assert fake_consumer.stopped is True
     assert consumer.pending_offsets == {topic_partition: 7}
+
+
+@pytest.mark.asyncio
+async def test_start_retries_kafka_connection_before_consuming(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    """Retry transient Kafka startup errors before giving up."""
+    consumer = MarketDataDBConsumer(max_retries=3, retry_delay=0)
+    use_fake_kafka(
+        monkeypatch,
+        [StopPolling()],
+        start_errors=[RuntimeError("broker warming up")],
+    )
+
+    with pytest.raises(StopPolling):
+        await consumer.start()
+
+    fake_consumer = FakeKafkaConsumer.last_instance
+    assert fake_consumer is not None
+    assert fake_consumer.start_attempts == 2
+    assert fake_consumer.started is True
+    assert fake_consumer.stopped is True
+
+
+@pytest.mark.asyncio
+async def test_start_stops_consumer_when_connection_retries_exhausted(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    """Stop the Kafka client if all startup connection retries fail."""
+    consumer = MarketDataDBConsumer(max_retries=2, retry_delay=0)
+    use_fake_kafka(
+        monkeypatch,
+        [],
+        start_errors=[RuntimeError("down 1"), RuntimeError("down 2")],
+    )
+
+    with pytest.raises(RuntimeError, match="down 2"):
+        await consumer.start()
+
+    fake_consumer = FakeKafkaConsumer.last_instance
+    assert fake_consumer is not None
+    assert fake_consumer.start_attempts == 2
+    assert fake_consumer.stopped is True
+    assert consumer.consumer is None
+
+
+@pytest.mark.asyncio
+async def test_start_does_not_double_flush_on_mid_loop_failure(
+    mock_db,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    """Avoid retrying a failed flush in finally and still stop the consumer."""
+    consumer = MarketDataDBConsumer(
+        batch_size=1,
+        batch_timeout_ms=60_000,
+        max_flush_retries=2,
+        retry_backoff_ms=0,
+    )
+    topic_partition = TopicPartition("market-data", 0)
+    valid_payload = orjson.dumps(create_market_data())
+    mock_db.persist_snapshot.side_effect = RuntimeError("overflow")
+    use_fake_kafka(
+        monkeypatch,
+        [{topic_partition: [make_record(valid_payload, offset=10)]}],
+    )
+
+    with pytest.raises(RuntimeError, match="overflow"):
+        await consumer.start()
+
+    fake_consumer = FakeKafkaConsumer.last_instance
+    assert fake_consumer is not None
+    # Only the mid-loop flush ran (2 attempts), not a second flush in finally.
+    assert mock_db.persist_snapshot.await_count == 2
+    assert fake_consumer.commits == []
+    assert fake_consumer.stopped is True
+    assert consumer.consumer is None

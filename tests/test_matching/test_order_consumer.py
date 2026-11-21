@@ -19,6 +19,8 @@ class FakeKafkaConsumer:
     last_instance: ClassVar[FakeKafkaConsumer | None] = None
 
     def __init__(self, *args: Any, **kwargs: Any) -> None:
+        self.args = args
+        self.kwargs = kwargs
         self.messages = list(self.__class__.queued_messages)
         self.commit_count = 0
         self.started = False
@@ -314,6 +316,8 @@ async def test_start_commits_after_skipping_malformed_message(
 
     fake_consumer = FakeKafkaConsumer.last_instance
     assert fake_consumer is not None
+    assert fake_consumer.kwargs["enable_auto_commit"] is False
+    assert fake_consumer.kwargs["auto_offset_reset"] == "earliest"
     assert fake_consumer.commit_count == 1
     assert fake_consumer.stopped is True
 

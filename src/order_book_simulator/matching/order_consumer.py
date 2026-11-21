@@ -301,6 +301,9 @@ class OrderConsumer:
             # message is handled (or deliberately skipped). Prevents
             # silent data loss when processing raises.
             enable_auto_commit=False,
+            # Read from offset 0 when a fresh group has no committed offset
+            # so early orders published during stack startup are not dropped.
+            auto_offset_reset="earliest",
         )
 
         for attempt in range(self.max_retries):
