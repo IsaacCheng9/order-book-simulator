@@ -60,10 +60,17 @@ def test_matching_limit_orders(order_book: OrderBook) -> None:
     trades = order_book.add_order(buy_order)
 
     assert len(trades) == 1
+    assert trades[0]["id"] is not None
     assert trades[0]["price"] == Decimal(100)
     assert trades[0]["quantity"] == Decimal(5)
     assert trades[0]["buyer_order_id"] == buy_order["id"]
     assert trades[0]["seller_order_id"] == sell_order["id"]
+
+    deltas = order_book.delta_buffer.get_deltas_since(0)
+    assert deltas is not None
+    trade_deltas = [d for d in deltas if d.trade_id is not None]
+    assert len(trade_deltas) == 1
+    assert trade_deltas[0].trade_id == trades[0]["id"]
 
     assert len(order_book.ask_levels) == 1
     assert order_book.ask_levels[Decimal(100)].quantity == Decimal(5)

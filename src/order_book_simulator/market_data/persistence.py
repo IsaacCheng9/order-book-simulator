@@ -111,10 +111,10 @@ async def persist_trades(stock_id: UUID, trades: list[dict], db: AsyncSession) -
         }
         await persist_order(seller_order, db)
 
-    # Now persist the trades
+    # Now persist the trades.
     query = text("""
         INSERT INTO trade (
-            id, stock_id, price, quantity, buyer_order_id, 
+            id, stock_id, price, quantity, buyer_order_id,
             seller_order_id, trade_time, total_amount,
             buyer_fee, seller_fee
         )
@@ -123,9 +123,12 @@ async def persist_trades(stock_id: UUID, trades: list[dict], db: AsyncSession) -
             :seller_id, :timestamp, :total_amount,
             :buyer_fee, :seller_fee
         )
+        ON CONFLICT (id) DO NOTHING
     """)
 
     for trade in trades:
+        # Preserve the matcher's fill ID so redelivered batches are idempotent.
+        trade_id = UUID(str(trade["id"])) if trade.get("id") is not None else uuid4()
         # Calculate total amount from price and quantity.
         price = Decimal(str(trade["price"]))
         quantity = Decimal(str(trade["quantity"]))
@@ -139,7 +142,7 @@ async def persist_trades(stock_id: UUID, trades: list[dict], db: AsyncSession) -
         await db.execute(
             query,
             {
-                "id": uuid4(),
+                "id": trade_id,
                 "stock_id": stock_id,
                 "price": price,
                 "quantity": quantity,

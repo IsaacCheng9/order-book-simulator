@@ -78,12 +78,20 @@ async def test_publishes_market_data_on_trade(
     assert second_payload["asks"] == []
     assert len(second_payload["trades"]) == 1
     trade = second_payload["trades"][0]
+    assert UUID(trade["id"])
     assert trade["price"] == "100"
     assert trade["quantity"] == "10"
     assert trade["stock_id"] == str(stock_id)
     assert trade["buyer_order_id"] == str(buy_order["id"])
     assert trade["seller_order_id"] == str(sell_order["id"])
     assert "timestamp" in trade
+
+    order_book = matching_engine.order_books[stock_id]
+    deltas = order_book.delta_buffer.get_deltas_since(0)
+    assert deltas is not None
+    trade_deltas = [d for d in deltas if d.trade_id is not None]
+    assert len(trade_deltas) == 1
+    assert str(trade_deltas[0].trade_id) == trade["id"]
 
 
 @pytest.mark.asyncio
