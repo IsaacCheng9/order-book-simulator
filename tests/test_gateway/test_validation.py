@@ -6,11 +6,17 @@ from uuid import uuid4
 
 import pytest
 from fastapi import HTTPException
+from pydantic import ValidationError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from order_book_simulator.common.models import OrderRequest, OrderSide, OrderType
 from order_book_simulator.gateway import validation as validation_module
-from order_book_simulator.gateway.validation import validate_order
+from order_book_simulator.gateway.validation import (
+    MAX_ORDER_NOTIONAL,
+    MAX_ORDER_PRICE,
+    _has_valid_price_precision,
+    validate_order,
+)
 
 
 def _stock(price_precision: int = 2) -> SimpleNamespace:
@@ -147,3 +153,108 @@ async def test_validate_order_rejects_non_positive_quantity(
 
     assert exc_info.value.status_code == 400
     assert exc_info.value.detail == "Order quantity must be positive"
+
+
+@pytest.mark.asyncio
+async def test_validate_order_accepts_price_at_upper_bound(stock_lookup):
+    """Accepts a limit price equal to MAX_ORDER_PRICE within notional bounds."""
+    stock = await validate_order(
+        _order(price=MAX_ORDER_PRICE, quantity=Decimal(10)),
+        db=_db(),
+    )
+
+    assert stock is stock_lookup
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "price",
+    [
+        MAX_ORDER_PRICE + Decimal("0.01"),
+        Decimal("1E+30"),
+    ],
+)
+async def test_validate_order_rejects_excessive_and_extreme_prices(
+    stock_lookup,
+    price: Decimal,
+):
+    """Rejects prices above MAX_ORDER_PRICE, including extreme exponents."""
+    with pytest.raises(HTTPException) as exc_info:
+        await validate_order(_order(price=price), db=_db())
+
+    assert exc_info.value.status_code == 400
+    assert exc_info.value.detail == (
+        f"Limit order price must not exceed {MAX_ORDER_PRICE}"
+    )
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("price", [Decimal("NaN"), Decimal("Infinity")])
+async def test_validate_order_rejects_non_finite_limit_price(
+    stock_lookup,
+    price: Decimal,
+):
+    """Rejects non-finite limit prices in both OrderRequest and validate_order."""
+    with pytest.raises(ValidationError):
+        _order(price=price)
+
+    unvalidated = OrderRequest.model_construct(
+        user_id=uuid4(),
+        ticker="AAPL",
+        type=OrderType.LIMIT,
+        side=OrderSide.BUY,
+        price=price,
+        quantity=Decimal(10),
+    )
+    with pytest.raises(HTTPException) as exc_info:
+        await validate_order(unvalidated, db=_db())
+
+    assert exc_info.value.status_code == 400
+    assert exc_info.value.detail == "Limit order price must be positive"
+
+
+@pytest.mark.asyncio
+async def test_validate_order_rejects_notional_overflow(stock_lookup):
+    """Rejects orders whose price * quantity reaches NUMERIC(20, 8) overflow."""
+    stock_lookup.max_order_size = Decimal(20_000_000)
+
+    with pytest.raises(HTTPException) as exc_info:
+        await validate_order(
+            _order(price=MAX_ORDER_PRICE, quantity=Decimal(10_000_000)),
+            db=_db(),
+        )
+
+    assert exc_info.value.status_code == 400
+    assert exc_info.value.detail == (
+        f"Order notional value must be less than {MAX_ORDER_NOTIONAL}"
+    )
+
+
+def test_has_valid_price_precision_handles_extreme_exponent():
+    """Returns False rather than raising InvalidOperation on huge Decimals."""
+    assert _has_valid_price_precision(Decimal("1E+30"), 2) is False
+
+
+def test_order_request_enforces_schema_string_lengths():
+    """Rejects time_in_force and client_order_id values exceeding schema limits."""
+    with pytest.raises(ValidationError):
+        OrderRequest(
+            user_id=uuid4(),
+            ticker="AAPL",
+            type=OrderType.LIMIT,
+            side=OrderSide.BUY,
+            price=Decimal("100.00"),
+            quantity=Decimal(10),
+            time_in_force="X" * 21,
+        )
+
+    with pytest.raises(ValidationError):
+        OrderRequest(
+            user_id=uuid4(),
+            ticker="AAPL",
+            type=OrderType.LIMIT,
+            side=OrderSide.BUY,
+            price=Decimal("100.00"),
+            quantity=Decimal(10),
+            client_order_id="C" * 101,
+        )
