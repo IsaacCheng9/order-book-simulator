@@ -1,3 +1,4 @@
+import ipaddress
 import logging
 import socket
 import struct
@@ -26,21 +27,31 @@ class MulticastSubscriber:
         recovery_base_url: str,
         burst_threshold: int = 10,
         http_timeout: float = 5.0,
+        interface: str = "0.0.0.0",
     ):
-        """
-        Initialise the subscriber and join the multicast group.
+        """Initialise the subscriber and join the multicast group.
 
         Args:
-            group: Multicast group address (e.g. '239.1.1.1').
+            group: IPv4 multicast group address (e.g. '239.1.1.1').
             port: UDP port to listen on.
             recovery_base_url: Base URL for order book recovery endpoints
                 (e.g. 'http://localhost:8000/v1/order-book').
             burst_threshold: Missed-message count that switches recovery from
                 incremental deltas to a full snapshot.
             http_timeout: Timeout in seconds for HTTP recovery requests.
+            interface: Local IPv4 interface address used for IGMP membership.
+
+        Raises:
+            ValueError: If group is not an IPv4 multicast address or interface
+                is not a valid IPv4 address.
         """
+        if not ipaddress.IPv4Address(group).is_multicast:
+            raise ValueError(f"group must be an IPv4 multicast address: {group!r}")
+        ipaddress.IPv4Address(interface)
+
         self.group = group
         self.port = port
+        self.interface = interface
         self.recovery_base_url = recovery_base_url.rstrip("/")
         self.burst_threshold = burst_threshold
         self.http_timeout = http_timeout
@@ -53,10 +64,12 @@ class MulticastSubscriber:
         self.socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         try:
             self.socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-            self.socket.bind(("", port))
+            # Bind to the multicast group rather than all interfaces so the
+            # socket rejects unicast and unrelated multicast traffic on port.
+            self.socket.bind((group, port))
             # Use two 4-byte IPv4 addresses for portable 8-byte struct ip_mreq.
             mreq = struct.pack(
-                "4s4s", socket.inet_aton(group), socket.inet_aton("0.0.0.0")
+                "4s4s", socket.inet_aton(group), socket.inet_aton(interface)
             )
             self.socket.setsockopt(socket.IPPROTO_IP, socket.IP_ADD_MEMBERSHIP, mreq)
         except Exception:
