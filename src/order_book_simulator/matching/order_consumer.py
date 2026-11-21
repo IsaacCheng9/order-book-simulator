@@ -12,6 +12,7 @@ from redis.asyncio import Redis
 from order_book_simulator.common.models import OrderSide, OrderType
 from order_book_simulator.market_data.analytics import MarketDataAnalytics
 from order_book_simulator.matching.matching_engine import MatchingEngine
+from order_book_simulator.matching.order_book import OrderRejectionError
 from order_book_simulator.multicast.multicast_publisher import MulticastPublisher
 
 logger = logging.getLogger(__name__)
@@ -243,7 +244,11 @@ class OrderConsumer:
             )
 
             start_process = datetime.now(UTC)
-            await self.matching_engine.process_order(order_data)
+            try:
+                await self.matching_engine.process_order(order_data)
+            except OrderRejectionError as exc:
+                self._log_rejected_order(message, exc, order_id)
+                return
             process_time = (datetime.now(UTC) - start_process).total_seconds() * 1000
             total_latency = (datetime.now(UTC) - gateway_time).total_seconds() * 1000
             logger.info(
@@ -251,6 +256,22 @@ class OrderConsumer:
                 f"matching_time={process_time:.2f}ms, "
                 f"total_latency={total_latency:.2f}ms"
             )
+
+    def _log_rejected_order(
+        self,
+        message: ConsumerRecord,
+        error: OrderRejectionError,
+        order_id: str | None,
+    ) -> None:
+        """Log a domain-rejected order with Kafka coordinates before committing."""
+        logger.warning(
+            "Rejecting domain-invalid Kafka order: "
+            f"error={error!s}, "
+            f"topic={message.topic}, "
+            f"partition={message.partition}, "
+            f"offset={message.offset}, "
+            f"order_id={order_id!r}"
+        )
 
     def _log_skipped_message(
         self,

@@ -9,6 +9,7 @@ from aiokafka import ConsumerRecord
 
 from order_book_simulator.matching import order_consumer as order_consumer_module
 from order_book_simulator.matching.matching_engine import MatchingEngine
+from order_book_simulator.matching.order_book import OrderRejectionError
 from order_book_simulator.matching.order_consumer import OrderConsumer
 
 
@@ -345,3 +346,32 @@ async def test_start_does_not_commit_when_engine_error_propagates(
     assert fake_consumer is not None
     assert fake_consumer.commit_count == 0
     assert fake_consumer.stopped is True
+
+
+@pytest.mark.asyncio
+async def test_start_commits_and_logs_domain_rejected_order(
+    consumer: OrderConsumer,
+    engine: AsyncMock,
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+):
+    """Commit and log deterministic OrderRejectionError without crashing."""
+    caplog.set_level("WARNING")
+    engine.process_order.side_effect = OrderRejectionError(
+        "STOP orders are not supported."
+    )
+    FakeKafkaConsumer.queued_messages = [make_record(valid_order_payload())]
+    FakeKafkaConsumer.last_instance = None
+    monkeypatch.setattr(
+        order_consumer_module,
+        "AIOKafkaConsumer",
+        FakeKafkaConsumer,
+    )
+
+    await consumer.start()
+
+    fake_consumer = FakeKafkaConsumer.last_instance
+    assert fake_consumer is not None
+    assert fake_consumer.commit_count == 1
+    assert fake_consumer.stopped is True
+    assert "Rejecting domain-invalid Kafka order" in caplog.text

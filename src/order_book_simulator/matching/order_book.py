@@ -16,6 +16,10 @@ from order_book_simulator.common.models import (
 from order_book_simulator.matching.delta_buffer import DeltaBuffer
 
 
+class OrderRejectionError(ValueError):
+    """Raised when an order fails deterministic matching-domain validation."""
+
+
 class OrderBook:
     """
     Manages the limit order book for a single stock.
@@ -187,24 +191,25 @@ class OrderBook:
             price: The optional limit price.
 
         Raises:
-            ValueError: If the order cannot be handled by the matching engine.
+            OrderRejectionError: If the order cannot be handled by the
+                matching engine.
         """
         if order_type not in self.SUPPORTED_ORDER_TYPES:
-            raise ValueError(f"{order_type.value} orders are not supported.")
+            raise OrderRejectionError(f"{order_type.value} orders are not supported.")
 
         if not quantity.is_finite() or quantity <= Decimal(0):
-            raise ValueError("Order quantity must be positive.")
+            raise OrderRejectionError("Order quantity must be positive.")
 
         if order_type == OrderType.MARKET:
             if price is not None:
-                raise ValueError("Market orders should not have a price.")
+                raise OrderRejectionError("Market orders should not have a price.")
             return
 
         if price is None:
-            raise ValueError("Limit orders must have a price.")
+            raise OrderRejectionError("Limit orders must have a price.")
 
         if not price.is_finite() or price <= Decimal(0):
-            raise ValueError("Limit order price must be positive.")
+            raise OrderRejectionError("Limit order price must be positive.")
 
     def add_order(self, order: dict[str, Any]) -> list[dict]:
         """
