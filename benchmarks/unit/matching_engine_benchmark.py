@@ -14,7 +14,7 @@ import time
 from datetime import UTC, datetime
 from decimal import Decimal
 from typing import Any
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, MagicMock
 from uuid import UUID, uuid4
 
 from order_book_simulator.common.cache import order_book_cache
@@ -51,7 +51,18 @@ def create_order(
 def create_engine() -> MatchingEngine:
     """Creates a MatchingEngine with mocked dependencies."""
     # Mock Redis (lazy init means we can set it before first use).
-    order_book_cache.redis = AsyncMock()
+    # Provide a synchronous pipeline() returning an async context manager to
+    # match redis.asyncio.Redis.pipeline().
+    mock_pipe = MagicMock()
+    mock_pipe.__aenter__ = AsyncMock(return_value=mock_pipe)
+    mock_pipe.__aexit__ = AsyncMock(return_value=None)
+    mock_pipe.execute = AsyncMock(return_value=[])
+
+    mock_redis = AsyncMock()
+    mock_redis.get = AsyncMock(return_value=None)
+    mock_redis.lrange = AsyncMock(return_value=[])
+    mock_redis.pipeline = MagicMock(return_value=mock_pipe)
+    order_book_cache.redis = mock_redis
 
     # Mock Kafka producer and analytics (no real I/O).
     mock_producer = AsyncMock()
