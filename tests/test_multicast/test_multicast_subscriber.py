@@ -1,3 +1,5 @@
+import socket
+import struct
 from unittest.mock import MagicMock
 
 import httpx
@@ -266,3 +268,49 @@ def test_malformed_recovery_json_does_not_crash_or_drop_live_delta(
     )
     assert subscriber.expected_sequences.get("AAPL", 1) == 1
     assert 2 in subscriber._pending_deltas["AAPL"]
+
+
+def test_subscriber_binds_to_multicast_group_and_joins_interface(monkeypatch):
+    """Bind to the multicast group address and pass interface in ip_mreq."""
+    mock_sock = MagicMock()
+    monkeypatch.setattr(sub_module.socket, "socket", lambda *a, **kw: mock_sock)
+
+    sub = MulticastSubscriber(GROUP, PORT, RECOVERY_BASE_URL, interface="127.0.0.1")
+    try:
+        mock_sock.bind.assert_called_once_with((GROUP, PORT))
+        expected_mreq = struct.pack(
+            "4s4s", socket.inet_aton(GROUP), socket.inet_aton("127.0.0.1")
+        )
+        mock_sock.setsockopt.assert_any_call(
+            socket.IPPROTO_IP, socket.IP_ADD_MEMBERSHIP, expected_mreq
+        )
+    finally:
+        sub.close()
+
+
+@pytest.mark.parametrize("invalid_group", ["", "0.0.0.0", "127.0.0.1", "not-an-ip"])
+def test_subscriber_rejects_non_multicast_group_before_socket_creation(
+    monkeypatch, invalid_group
+):
+    """Reject non-multicast group addresses before opening a socket."""
+    socket_ctor = MagicMock()
+    monkeypatch.setattr(sub_module.socket, "socket", socket_ctor)
+
+    with pytest.raises(ValueError):
+        MulticastSubscriber(invalid_group, PORT, RECOVERY_BASE_URL)
+
+    socket_ctor.assert_not_called()
+
+
+@pytest.mark.parametrize("invalid_interface", ["", "not-an-ip", "256.0.0.1"])
+def test_subscriber_rejects_invalid_interface_before_socket_creation(
+    monkeypatch, invalid_interface
+):
+    """Reject invalid IPv4 interface addresses before opening a socket."""
+    socket_ctor = MagicMock()
+    monkeypatch.setattr(sub_module.socket, "socket", socket_ctor)
+
+    with pytest.raises(ValueError):
+        MulticastSubscriber(GROUP, PORT, RECOVERY_BASE_URL, interface=invalid_interface)
+
+    socket_ctor.assert_not_called()
