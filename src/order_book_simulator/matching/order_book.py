@@ -5,6 +5,7 @@ from uuid import UUID, uuid4
 from sortedcontainers import SortedDict
 
 from order_book_simulator.common.models import (
+    Delta,
     DeltaType,
     FilledOrder,
     OrderBookEntry,
@@ -31,6 +32,34 @@ class OrderBook:
         # us to fetch order details and cancel / modify orders efficiently.
         self.order_id_to_order: dict[UUID, OrderBookEntry] = {}
         self.delta_buffer: DeltaBuffer = DeltaBuffer()
+        self._last_deltas: list[Delta] = []
+
+    @property
+    def last_deltas(self) -> list[Delta]:
+        """Return deltas emitted by the most recent order or cancel call."""
+        return list(self._last_deltas)
+
+    def _record_delta(
+        self,
+        delta_type: DeltaType,
+        side: OrderSide | None,
+        price: Decimal,
+        quantity: Decimal,
+        order_count: int | None = None,
+        trade_id: UUID | None = None,
+    ) -> Delta:
+        """Append a delta to both the bounded history and current-operation list."""
+        delta = self.delta_buffer.add(
+            delta_type,
+            self.ticker,
+            side,
+            price,
+            quantity,
+            order_count=order_count,
+            trade_id=trade_id,
+        )
+        self._last_deltas.append(delta)
+        return delta
 
     def _match_orders(
         self,
@@ -90,9 +119,8 @@ class OrderBook:
                 )
                 trades.append(fill)
                 matched_at_level = True
-                self.delta_buffer.add(
+                self._record_delta(
                     DeltaType.TRADE,
-                    self.ticker,
                     None,
                     price,
                     match_quantity,
@@ -113,18 +141,16 @@ class OrderBook:
             if orders_to_remove:
                 if not level.orders:
                     levels_to_remove.append(price)
-                    self.delta_buffer.add(
+                    self._record_delta(
                         DeltaType.LEVEL_REMOVE,
-                        self.ticker,
                         resting_side,
                         price,
                         Decimal(0),
                         0,
                     )
                 else:
-                    self.delta_buffer.add(
+                    self._record_delta(
                         DeltaType.LEVEL_UPDATE,
-                        self.ticker,
                         resting_side,
                         price,
                         level.quantity,
@@ -132,9 +158,8 @@ class OrderBook:
                     )
             elif matched_at_level:
                 # Partial fill - no orders removed but quantity changed.
-                self.delta_buffer.add(
+                self._record_delta(
                     DeltaType.LEVEL_UPDATE,
-                    self.ticker,
                     resting_side,
                     price,
                     level.quantity,
@@ -205,6 +230,7 @@ class OrderBook:
         price = Decimal(str(order["price"])) if order.get("price") is not None else None
         quantity = Decimal(str(order["quantity"]))
         self._validate_order(order_type, quantity, price)
+        self._last_deltas = []
 
         # Create an OrderBookEntry from the incoming order dict.
         incoming_order = OrderBookEntry(
@@ -238,9 +264,8 @@ class OrderBook:
             # Add the order to the price level and update the index and buffer.
             price_level.orders[incoming_order.id] = incoming_order
             self.order_id_to_order[incoming_order.id] = incoming_order
-            self.delta_buffer.add(
+            self._record_delta(
                 DeltaType.LEVEL_UPDATE,
-                self.ticker,
                 incoming_order.side,
                 price,
                 price_level.quantity,
@@ -269,6 +294,7 @@ class OrderBook:
         Returns:
             True if the order was cancelled, False otherwise.
         """
+        self._last_deltas = []
         order: OrderBookEntry | None = self.order_id_to_order.get(order_id)
         if not order:
             return False
@@ -283,18 +309,16 @@ class OrderBook:
                 del price_level.orders[order_id]
                 if not price_level.orders:
                     del levels[order.price]
-                    self.delta_buffer.add(
+                    self._record_delta(
                         DeltaType.LEVEL_REMOVE,
-                        self.ticker,
                         order.side,
                         order.price,
                         Decimal(0),
                         0,
                     )
                 else:
-                    self.delta_buffer.add(
+                    self._record_delta(
                         DeltaType.LEVEL_UPDATE,
-                        self.ticker,
                         order.side,
                         order.price,
                         price_level.quantity,
