@@ -143,17 +143,18 @@ async def _persist_fallback_order_stub(order: dict[str, Any], db: AsyncSession) 
     query = text("""
         INSERT INTO order_ (
             id, stock_id, side, price, quantity,
-            filled_quantity, status, created_at,
+            filled_quantity, status, created_at, updated_at,
             type, user_id
         )
         VALUES (
             :order_id, :stock_id, :side, :price, :quantity,
-            :filled_quantity, :status, :created_at,
+            :filled_quantity, :status, :created_at, :updated_at,
             :type, :user_id
         )
         ON CONFLICT (id) DO NOTHING
     """)
 
+    created_at = _parse_timestamp(order.get("created_at"))
     await db.execute(
         query,
         {
@@ -164,7 +165,8 @@ async def _persist_fallback_order_stub(order: dict[str, Any], db: AsyncSession) 
             "quantity": Decimal(str(order["quantity"])),
             "filled_quantity": Decimal(0),
             "status": OrderStatus.PENDING.value,
-            "created_at": _parse_timestamp(order.get("created_at")),
+            "created_at": created_at,
+            "updated_at": created_at,
             "type": OrderType.LIMIT.value,
             "user_id": DEFAULT_USER_ID,
         },
