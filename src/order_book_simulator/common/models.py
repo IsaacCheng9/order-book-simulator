@@ -8,6 +8,7 @@ from uuid import UUID
 from pydantic import BaseModel, Field
 
 MAX_DELTA_HISTORY = 2000
+DEFAULT_ORDER_USER_ID = UUID("00000000-0000-0000-0000-000000000000")
 
 
 class OrderType(str, Enum):
@@ -86,9 +87,7 @@ class Stock(BaseModel):
 
 @dataclass
 class OrderBookEntry:
-    """
-    Represents an individual order in the order book.
-    """
+    """Represents an individual order in the order book."""
 
     id: UUID
     order_type: OrderType
@@ -97,6 +96,16 @@ class OrderBookEntry:
     price: Decimal | None
     # The time the order was added to the book in microseconds.
     entry_time: int
+    original_quantity: Decimal | None = None
+    filled_quantity: Decimal = Decimal(0)
+    user_id: UUID = DEFAULT_ORDER_USER_ID
+    time_in_force: str | None = None
+    client_order_id: str | None = None
+    created_at: datetime | None = None
+
+    def __post_init__(self) -> None:
+        if self.original_quantity is None:
+            self.original_quantity = self.quantity
 
 
 @dataclass

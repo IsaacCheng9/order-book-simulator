@@ -9,6 +9,12 @@ import orjson
 from aiokafka import AIOKafkaConsumer, AIOKafkaProducer, ConsumerRecord
 from redis.asyncio import Redis
 
+from order_book_simulator.common.events import (
+    MAX_CLIENT_ORDER_ID_LENGTH,
+    MAX_TICKER_LENGTH,
+    MAX_TIME_IN_FORCE_LENGTH,
+    validate_schema_version,
+)
 from order_book_simulator.common.models import OrderSide, OrderType
 from order_book_simulator.market_data.analytics import MarketDataAnalytics
 from order_book_simulator.matching.matching_engine import MatchingEngine
@@ -103,6 +109,8 @@ class OrderConsumer:
         value = order_data[field]
         if not isinstance(value, str) or not value:
             raise TypeError(f"{field} must be a non-empty string")
+        if "\x00" in value:
+            raise ValueError(f"{field} must not contain NUL bytes")
         return value
 
     @staticmethod
@@ -158,6 +166,14 @@ class OrderConsumer:
             raise ValueError("gateway_received_at must include a timezone")
         return gateway_time
 
+    @staticmethod
+    def _require_ticker(order_data: dict[str, Any]) -> str:
+        """Return a required ticker string bounded by stock.ticker VARCHAR(20)."""
+        ticker = OrderConsumer._require_string(order_data, "ticker")
+        if len(ticker) > MAX_TICKER_LENGTH:
+            raise ValueError(f"ticker exceeds maximum length of {MAX_TICKER_LENGTH}")
+        return ticker
+
     def _validate_order_message(self, order_data: dict[str, Any]) -> datetime:
         """Validate an order message before handing it to the engine.
 
@@ -171,9 +187,37 @@ class OrderConsumer:
         Returns:
             The parsed gateway timestamp used for latency logging.
         """
+        validate_schema_version(order_data)
         self._validate_uuid(self._require_string(order_data, "id"), "id")
         self._validate_uuid(self._require_string(order_data, "stock_id"), "stock_id")
-        self._require_string(order_data, "ticker")
+        self._require_ticker(order_data)
+        raw_user_id = order_data.get("user_id")
+        if raw_user_id is not None:
+            if not isinstance(raw_user_id, str) or not raw_user_id:
+                raise TypeError("user_id must be a non-empty UUID string")
+            self._validate_uuid(raw_user_id, "user_id")
+        raw_tif = order_data.get("time_in_force")
+        if raw_tif is not None:
+            if not isinstance(raw_tif, str):
+                raise TypeError("time_in_force must be a string or null")
+            if "\x00" in raw_tif:
+                raise ValueError("time_in_force must not contain NUL bytes")
+            if len(raw_tif) > MAX_TIME_IN_FORCE_LENGTH:
+                raise ValueError(
+                    f"time_in_force exceeds maximum length of "
+                    f"{MAX_TIME_IN_FORCE_LENGTH}"
+                )
+        raw_client_order_id = order_data.get("client_order_id")
+        if raw_client_order_id is not None:
+            if not isinstance(raw_client_order_id, str):
+                raise TypeError("client_order_id must be a string or null")
+            if "\x00" in raw_client_order_id:
+                raise ValueError("client_order_id must not contain NUL bytes")
+            if len(raw_client_order_id) > MAX_CLIENT_ORDER_ID_LENGTH:
+                raise ValueError(
+                    f"client_order_id exceeds maximum length of "
+                    f"{MAX_CLIENT_ORDER_ID_LENGTH}"
+                )
         OrderSide(self._require_string(order_data, "side"))
         OrderType(self._require_string(order_data, "order_type"))
         self._validate_decimal(order_data["quantity"], "quantity")
@@ -189,9 +233,10 @@ class OrderConsumer:
         Args:
             order_data: The decoded cancellation message.
         """
+        validate_schema_version(order_data)
         self._validate_uuid(self._require_string(order_data, "order_id"), "order_id")
         self._validate_uuid(self._require_string(order_data, "stock_id"), "stock_id")
-        self._require_string(order_data, "ticker")
+        self._require_ticker(order_data)
         raw_cancelled_at = order_data.get("cancelled_at")
         if raw_cancelled_at is not None:
             if not isinstance(raw_cancelled_at, str) or not raw_cancelled_at:

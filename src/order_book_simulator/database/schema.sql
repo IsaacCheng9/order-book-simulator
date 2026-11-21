@@ -83,11 +83,17 @@ CREATE OR REPLACE FUNCTION update_modified_column() RETURNS TRIGGER AS $$ BEGIN 
 RETURN NEW;
 END;
 $$ language 'plpgsql';
+-- Function to automatically update 'updated_at' when no explicit timestamp is provided
+CREATE OR REPLACE FUNCTION preserve_or_update_order_modtime() RETURNS TRIGGER AS $$ BEGIN IF NEW.updated_at IS NULL THEN NEW.updated_at = CURRENT_TIMESTAMP;
+END IF;
+RETURN NEW;
+END;
+$$ language 'plpgsql';
 -- Triggers to automatically update 'updated_at' for stocks and orders
 CREATE TRIGGER update_stocks_modtime BEFORE
 UPDATE ON stock FOR EACH ROW EXECUTE FUNCTION update_modified_column();
 CREATE TRIGGER update_orders_modtime BEFORE
-UPDATE ON order_ FOR EACH ROW EXECUTE FUNCTION update_modified_column();
+UPDATE ON order_ FOR EACH ROW EXECUTE FUNCTION preserve_or_update_order_modtime();
 -- Non-unique lookup index for user client order IDs until gateway-level
 -- client-order-ID idempotency is introduced.
 CREATE INDEX idx_client_order_per_user ON order_(user_id, client_order_id)

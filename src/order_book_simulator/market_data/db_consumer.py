@@ -7,15 +7,26 @@ from uuid import UUID
 import orjson
 from aiokafka import AIOKafkaConsumer, ConsumerRecord, TopicPartition
 
+from order_book_simulator.common.events import (
+    EventValidationError,
+    validate_market_data_event,
+)
 from order_book_simulator.database.connection import AsyncSessionLocal
 from order_book_simulator.market_data.persistence import (
     persist_market_snapshot,
+    persist_order,
     persist_trades,
 )
 
 logger = logging.getLogger(__name__)
 
-MALFORMED_MESSAGE_ERRORS = (orjson.JSONDecodeError, TypeError)
+# Permanent payload/schema errors are skipped and acknowledged behind earlier
+# buffered offsets; transient persistence errors still retry and propagate.
+MALFORMED_MESSAGE_ERRORS = (
+    orjson.JSONDecodeError,
+    EventValidationError,
+    TypeError,
+)
 
 
 class MarketDataDBConsumer:
@@ -96,10 +107,24 @@ class MarketDataDBConsumer:
     async def _persist_batch(self, batch: list[dict[str, Any]]) -> None:
         async with AsyncSessionLocal() as session, session.begin():
             for data in batch:
-                stock_id = UUID(data["stock_id"])
+                raw_stock_id = data["stock_id"]
+                stock_id = (
+                    raw_stock_id
+                    if isinstance(raw_stock_id, UUID)
+                    else UUID(str(raw_stock_id))
+                )
+                persisted_order_ids: set[UUID] = set()
+                for order_update in data.get("order_updates") or []:
+                    await persist_order(order_update, session)
+                    persisted_order_ids.add(UUID(str(order_update["id"])))
                 await persist_market_snapshot(stock_id, data, session)
                 if data.get("trades"):
-                    await persist_trades(stock_id, data["trades"], session)
+                    await persist_trades(
+                        stock_id,
+                        data["trades"],
+                        session,
+                        known_order_ids=persisted_order_ids,
+                    )
 
     async def _commit_offsets(self, offsets: dict[TopicPartition, int]) -> None:
         if not offsets or self.consumer is None:
@@ -149,7 +174,7 @@ class MarketDataDBConsumer:
         data = orjson.loads(message.value)
         if not isinstance(data, dict):
             raise TypeError("Market data message payload must be a JSON object")
-        return data
+        return validate_market_data_event(data)
 
     def _log_skipped_message(
         self,
