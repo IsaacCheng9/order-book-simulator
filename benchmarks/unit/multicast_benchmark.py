@@ -98,7 +98,7 @@ async def benchmark_fan_out_scaling(
             publisher = _create_mock_publisher()
             start = time.perf_counter()
             for i in range(NUM_BROADCASTS):
-                publisher.send(i + 1, payload)
+                publisher.send(TICKER, i + 1, payload)
             elapsed = time.perf_counter() - start
             mc_times.append((elapsed / NUM_BROADCASTS) * 1_000_000)
 
@@ -169,7 +169,7 @@ async def benchmark_publish_latency(
                 if deltas:
                     for d in deltas:
                         payload = orjson.dumps(asdict(d), default=str)
-                        publisher.send(d.sequence_number, payload)
+                        publisher.send(d.ticker, d.sequence_number, payload)
 
                 elapsed = time.perf_counter() - start
                 latencies.append(elapsed * 1_000_000)

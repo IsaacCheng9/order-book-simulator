@@ -77,17 +77,32 @@ def test_get_deltas_returns_empty_when_up_to_date(
         mock_get_stock,
     )
 
-    # Request with a sequence number beyond the current - should be
-    # up to date.
+    # Request at the exact current sequence number - client is up to date.
     response = test_client.get(
         "/v1/order-book/TICKER/deltas",
-        params={"sequence_number": 999},
+        params={"sequence_number": 1},
     )
     assert response.status_code == 200
 
     data = response.json()
-    assert "deltas" in data
-    assert len(data["deltas"]) == 0
+    assert data["deltas"] == []
+    assert data["current_delta_sequence_number"] == 1
+
+    # Request ahead of server sequence (e.g. after Redis reset) falls back to
+    # an atomic snapshot + cursor.
+    ahead_response = test_client.get(
+        "/v1/order-book/TICKER/deltas",
+        params={"sequence_number": 999},
+    )
+    assert ahead_response.status_code == 200
+    ahead_data = ahead_response.json()
+    assert "snapshot" in ahead_data
+    assert ahead_data["current_delta_sequence_number"] == 1
+
+    # GET /{ticker} also returns the atomic snapshot cursor.
+    book_response = test_client.get("/v1/order-book/TICKER")
+    assert book_response.status_code == 200
+    assert book_response.json()["current_delta_sequence_number"] == 1
 
 
 def test_get_deltas_snapshot_fallback(test_client, matching_engine, monkeypatch):
