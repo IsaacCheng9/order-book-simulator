@@ -76,7 +76,7 @@ The order book services handle order processing, matching, and market data
 dissemination. We expose the services via a FastAPI gateway service which
 enables the user to interact with the services via REST API calls.
 
-The system consists of four main services:
+The system consists of five main services:
 
 - **Gateway Service**: REST API and WebSocket service that handles incoming
   orders, market data requests, and real-time streaming
@@ -280,7 +280,7 @@ Docker Compose.
 # Integration benchmark with real Redis and Kafka.
 docker compose up -d redis kafka
 sleep 5
-python benchmarks/integration/integration_benchmark.py
+uv run python benchmarks/integration/integration_benchmark.py
 docker compose down -v
 ```
 
