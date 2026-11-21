@@ -17,6 +17,7 @@ dependencies = [
     "polars>=1.22.0",
     "pydantic>=2.10.6",
     "redis>=5.2.1",
+    "requests>=2.32.3",
     "sortedcontainers>=2.4.0",
     "sqlalchemy>=2.0.37",
     "streamlit>=1.46.1",

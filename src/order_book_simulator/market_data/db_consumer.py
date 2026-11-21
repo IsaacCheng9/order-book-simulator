@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import os
 import time
 from typing import Any
 from uuid import UUID
@@ -36,7 +37,7 @@ class MarketDataDBConsumer:
 
     def __init__(
         self,
-        bootstrap_servers: str = "kafka:9092",
+        bootstrap_servers: str | None = None,
         topic: str = "market-data",
         group_id: str = "market-data",
         batch_size: int = 50,
@@ -50,7 +51,8 @@ class MarketDataDBConsumer:
         Creates a new market data DB consumer.
 
         Args:
-            bootstrap_servers: Kafka bootstrap servers string.
+            bootstrap_servers: Kafka bootstrap servers string. Defaults to
+                ``KAFKA_BOOTSTRAP_SERVERS`` or ``kafka:9092``.
             topic: Kafka topic to consume from.
             group_id: Consumer group ID.
             batch_size: Number of entries to process in each batch.
@@ -61,7 +63,9 @@ class MarketDataDBConsumer:
             retry_delay: Delay between Kafka startup connection retries in seconds.
         """
         self.consumer: AIOKafkaConsumer | None = None
-        self.bootstrap_servers: str = bootstrap_servers
+        self.bootstrap_servers: str = bootstrap_servers or os.getenv(
+            "KAFKA_BOOTSTRAP_SERVERS", "kafka:9092"
+        )
         self.topic: str = topic
         self.group_id: str = group_id
         self.batch: list[dict[str, Any]] = []

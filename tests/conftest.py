@@ -350,13 +350,22 @@ def mock_redis():
 
             return _MockPipeline()
 
-        async def keys(self, pattern: str) -> list[str]:
+        def _match_keys(self, pattern: str) -> list[str]:
             if pattern == "order_book:*":
                 return [k for k in mock_data if k.startswith("order_book:")]
             if pattern.endswith("*"):
                 prefix = pattern[:-1]
                 return [k for k in mock_data if k.startswith(prefix)]
             return [k for k in mock_data if k == pattern]
+
+        async def keys(self, pattern: str) -> list[str]:
+            return self._match_keys(pattern)
+
+        async def scan_iter(self, match: str | None = None, count: int | None = None):
+            del count
+            pattern = match or "*"
+            for key in self._match_keys(pattern):
+                yield key
 
         def exists(self, key: str) -> bool:
             return key in mock_data

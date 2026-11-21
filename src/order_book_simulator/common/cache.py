@@ -14,7 +14,7 @@ class OrderBookCache:
 
     def __init__(
         self,
-        redis_url: str = os.getenv("REDIS_URL", "redis://redis:6379/0"),
+        redis_url: str | None = None,
         max_trade_history: int = 1_000,
     ):
         """
@@ -24,7 +24,8 @@ class OrderBookCache:
         this module without requiring a Redis server to be available.
 
         Args:
-            redis_url: The Redis connection URL.
+            redis_url: The Redis connection URL. Defaults to the ``REDIS_URL``
+                environment variable or ``redis://redis:6379/0``.
             max_trade_history: The maximum number of trades to keep in cache.
         """
         self._redis_url = redis_url
@@ -35,7 +36,10 @@ class OrderBookCache:
     def redis(self) -> Redis:
         """Returns the Redis client, connecting lazily on first access."""
         if self._redis is None:
-            self._redis = Redis.from_url(self._redis_url)
+            redis_url = self._redis_url or os.getenv(
+                "REDIS_URL", "redis://redis:6379/0"
+            )
+            self._redis = Redis.from_url(redis_url)
         return self._redis
 
     @redis.setter
@@ -128,7 +132,10 @@ class OrderBookCache:
         Returns:
             A dictionary of order book snapshots keyed by stock ID.
         """
-        keys = await self.redis.keys("order_book:*")
+        if hasattr(self.redis, "scan_iter"):
+            keys = [key async for key in self.redis.scan_iter(match="order_book:*")]
+        else:
+            keys = await self.redis.keys("order_book:*")
         result: dict[str, dict[str, Any]] = {}
         for key in keys:
             stock_id = (
