@@ -87,6 +87,7 @@ services:
     build:
       context: .
       dockerfile: docker/Dockerfile.market_data
+    restart: unless-stopped
     depends_on:
       kafka:
         condition: service_healthy
