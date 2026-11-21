@@ -124,15 +124,13 @@ class MatchingEngine:
         if not order_book:
             return {"success": False, "reason": "Order book not found"}
 
-        sequence_before = order_book.delta_buffer.current_sequence
-
         is_success = order_book.cancel_order(order_id)
         if not is_success:
             return {"success": False, "reason": "Order not found"}
 
         # Update the order book cache.
         await order_book_cache.set_order_book(stock_id, order_book.get_full_snapshot())
-        deltas = order_book.delta_buffer.get_deltas_since(sequence_before)
+        deltas = order_book.last_deltas
         if deltas:
             await order_book_cache.store_deltas(stock_id, deltas)
             await order_book_cache.publish_deltas(order_book.ticker, deltas)
@@ -161,15 +159,13 @@ class MatchingEngine:
             order_book = OrderBook(stock_id, ticker)
             self.order_books[stock_id] = order_book
 
-        sequence_before = order_book.delta_buffer.current_sequence
-
         # Add timestamp of when the order was processed.
         order_message["created_at"] = datetime.now(UTC)
         trades = order_book.add_order(order_message)
 
-        # Cache the order book state
+        # Cache the order book state.
         await order_book_cache.set_order_book(stock_id, order_book.get_full_snapshot())
-        deltas = order_book.delta_buffer.get_deltas_since(sequence_before)
+        deltas = order_book.last_deltas
         if deltas:
             await order_book_cache.store_deltas(stock_id, deltas)
             await order_book_cache.publish_deltas(ticker, deltas)
