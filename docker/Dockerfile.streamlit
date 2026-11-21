@@ -2,26 +2,26 @@ FROM python:3.14-slim
 
 WORKDIR /app
 
-# Copy dependency files
-COPY pyproject.toml ./
-COPY uv.lock ./
-COPY README.md ./
+# Copy dependency manifests first so dependency installation stays cached across src edits.
+COPY pyproject.toml uv.lock README.md ./
 
-# Install uv and dependencies (gcc/libc-dev/zlib1g-dev needed for aiokafka C extensions)
+# Install uv and third-party dependencies (gcc/libc-dev/zlib1g-dev needed for aiokafka C extensions).
 RUN apt-get update && apt-get install -y --no-install-recommends \
     gcc \
     libc-dev \
     zlib1g-dev \
-    && pip install uv && uv sync --frozen \
+    && pip install --no-cache-dir uv==0.11.12 \
+    && uv sync --frozen --no-dev --no-install-project \
     && apt-get purge -y gcc libc-dev zlib1g-dev \
     && apt-get autoremove -y \
-    && rm -rf /var/lib/apt/lists/*
+    && rm -rf /var/lib/apt/lists/* /root/.cache/pip /root/.cache/uv
 
-# Copy source code
+# Copy source code and install the pure-Python package without recompiling dependencies.
 COPY src/ ./src/
+RUN uv sync --frozen --no-dev && rm -rf /root/.cache/uv
 
-# Expose Streamlit's default port
+# Expose Streamlit's default port.
 EXPOSE 8501
 
-# Run Streamlit
-CMD ["uv", "run", "streamlit", "run", "src/order_book_simulator/ui/streamlit_app.py", "--server.address", "0.0.0.0"]
+# Run Streamlit without re-syncing dependencies at container start.
+CMD ["uv", "run", "--no-sync", "streamlit", "run", "src/order_book_simulator/ui/streamlit_app.py", "--server.address", "0.0.0.0", "--server.port", "8501", "--server.headless", "true"]
