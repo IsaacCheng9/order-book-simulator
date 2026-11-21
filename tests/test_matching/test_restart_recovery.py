@@ -277,8 +277,7 @@ async def _wipe_redis_keys(stock_ids: list[UUID]) -> None:
 @pytest.mark.parametrize(
     "crash_point",
     [
-        "after_set_order_book",
-        "after_store_deltas",
+        "after_store_order_book_and_deltas",
         "after_append_trades",
         "after_kafka_publish",
         "before_commit",
@@ -335,28 +334,22 @@ async def test_crash_and_restart_matches_uninterrupted_run(
     crash_consumer = OrderConsumer(matching_engine=crash_engine)
 
     # Inject the failure on the crossing buy order (5th order overall, offset 4).
-    aapl_calls = {"set_order_book": 0, "store_deltas": 0, "append_trades": 0}
-    original_set_order_book = order_book_cache.set_order_book
-    original_store_deltas = order_book_cache.store_deltas
+    aapl_calls = {"store_order_book_and_deltas": 0, "append_trades": 0}
+    original_store_book_and_deltas = order_book_cache.store_order_book_and_deltas
     original_append_trades = order_book_cache.append_trades
     original_record_analytics = crash_analytics.record_state_from_order_book
 
-    async def failing_set_order_book(stock_id: UUID, snapshot: dict[str, Any]) -> None:
-        await original_set_order_book(stock_id, snapshot)
+    async def failing_store_book_and_deltas(
+        stock_id: UUID, snapshot: dict[str, Any], deltas: list[Any]
+    ) -> None:
+        await original_store_book_and_deltas(stock_id, snapshot, deltas)
         if stock_id == aapl_id:
-            aapl_calls["set_order_book"] += 1
+            aapl_calls["store_order_book_and_deltas"] += 1
             if (
-                crash_point == "after_set_order_book"
-                and aapl_calls["set_order_book"] == 4
+                crash_point == "after_store_order_book_and_deltas"
+                and aapl_calls["store_order_book_and_deltas"] == 4
             ):
-                raise RuntimeError("injected crash after set_order_book")
-
-    async def failing_store_deltas(stock_id: UUID, deltas: list[Any]) -> None:
-        await original_store_deltas(stock_id, deltas)
-        if stock_id == aapl_id:
-            aapl_calls["store_deltas"] += 1
-            if crash_point == "after_store_deltas" and aapl_calls["store_deltas"] == 4:
-                raise RuntimeError("injected crash after store_deltas")
+                raise RuntimeError("injected crash after store_order_book_and_deltas")
 
     async def failing_append_trades(stock_id: UUID, trades: list[dict]) -> None:
         await original_append_trades(stock_id, trades)
@@ -368,10 +361,12 @@ async def test_crash_and_restart_matches_uninterrupted_run(
             ):
                 raise RuntimeError("injected crash after append_trades")
 
-    if crash_point == "after_set_order_book":
-        monkeypatch.setattr(order_book_cache, "set_order_book", failing_set_order_book)
-    elif crash_point == "after_store_deltas":
-        monkeypatch.setattr(order_book_cache, "store_deltas", failing_store_deltas)
+    if crash_point == "after_store_order_book_and_deltas":
+        monkeypatch.setattr(
+            order_book_cache,
+            "store_order_book_and_deltas",
+            failing_store_book_and_deltas,
+        )
     elif crash_point == "after_append_trades":
         monkeypatch.setattr(order_book_cache, "append_trades", failing_append_trades)
     elif crash_point == "after_kafka_publish":
@@ -404,8 +399,11 @@ async def test_crash_and_restart_matches_uninterrupted_run(
     assert crash_cluster.committed_offset == 4
 
     # 3. Restore normal cache methods and restart with a brand-new engine.
-    monkeypatch.setattr(order_book_cache, "set_order_book", original_set_order_book)
-    monkeypatch.setattr(order_book_cache, "store_deltas", original_store_deltas)
+    monkeypatch.setattr(
+        order_book_cache,
+        "store_order_book_and_deltas",
+        original_store_book_and_deltas,
+    )
     monkeypatch.setattr(order_book_cache, "append_trades", original_append_trades)
 
     recovered_producer = AsyncMock()
