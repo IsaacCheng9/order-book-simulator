@@ -146,3 +146,32 @@ async def test_store_deltas_preserves_trade_fields():
     assert result[0]["trade_id"] == str(trade_id)
     assert result[0]["side"] is None
     assert result[0]["price"] == "150.50"
+
+
+@pytest.mark.asyncio
+async def test_get_deltas_since_with_sequence_falls_back_on_empty_reset_or_tail_gap():
+    """Return None to trigger snapshot fallback when delta continuity is broken."""
+    stock_id = uuid4()
+
+    # Empty deltas list with current_seq == 0 and client at 0 is up to date.
+    deltas, seq = await order_book_cache.get_deltas_since_with_sequence(stock_id, 0)
+    assert deltas == []
+    assert seq == 0
+
+    # Empty deltas list while sequence watermark advanced must force snapshot.
+    await order_book_cache.redis.set(order_book_cache._get_delta_seq_key(stock_id), 5)
+    deltas, seq = await order_book_cache.get_deltas_since_with_sequence(stock_id, 2)
+    assert deltas is None
+    assert seq == 5
+
+    # Client ahead of Redis after a Redis reset must force snapshot.
+    await order_book_cache.store_deltas(stock_id, [_make_delta(6), _make_delta(7)])
+    deltas, seq = await order_book_cache.get_deltas_since_with_sequence(stock_id, 99)
+    assert deltas is None
+    assert seq == 7
+
+    # Tail mismatch (seq watermark ahead of latest stored delta) forces snapshot.
+    await order_book_cache.redis.set(order_book_cache._get_delta_seq_key(stock_id), 10)
+    deltas, seq = await order_book_cache.get_deltas_since_with_sequence(stock_id, 6)
+    assert deltas is None
+    assert seq == 10

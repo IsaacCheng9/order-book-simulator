@@ -1,6 +1,5 @@
-from typing import Any
-
 from fastapi import APIRouter, WebSocket
+from redis.exceptions import RedisError
 from starlette.websockets import WebSocketDisconnect
 
 from order_book_simulator.common.cache import order_book_cache
@@ -39,53 +38,66 @@ async def order_book_ws(
         await websocket.close(code=1008, reason=f"Ticker {ticker} not found")
         return
 
-    send_snapshot = True
-    # If the client has provided a last sequence number and we can get the
-    # deltas since then, send the deltas to save bandwidth.
-    if last_seen_sequence_number is not None:
-        deltas: list[dict[str, Any]] | None = await order_book_cache.get_deltas_since(
-            stock.id, last_seen_sequence_number
-        )
-        if deltas is not None:
-            current_sequence_number = (
-                await order_book_cache.get_current_delta_sequence_number(stock.id)
-            )
-            await websocket.send_json(
-                {
-                    "type": "deltas",
-                    "data": deltas,
-                    "current_sequence_number": current_sequence_number,
-                }
-            )
-            send_snapshot = False
-
-    # Otherwise, send the initial snapshot to the client as a starting point.
-    if send_snapshot:
-        snapshot: dict[str, Any] | None = await order_book_cache.get_order_book(
-            stock.id
-        )
-        if not snapshot:
-            await websocket.close(
-                code=1008, reason=f"No order book found for {stock.ticker}"
-            )
-            return
-        current_sequence_number = (
-            await order_book_cache.get_current_delta_sequence_number(stock.id)
-        )
-        await websocket.send_json(
-            {
-                "type": "snapshot",
-                "data": snapshot,
-                "current_sequence_number": current_sequence_number,
-            }
-        )
-
-    # Subscribe the client under the canonical ticker used by delta publishers.
-    ws_manager.subscribe(websocket, stock.ticker)
+    # Subscribe into a bootstrap buffer before reading Redis so deltas
+    # published during snapshot/recovery reads are never missed.
+    connection = ws_manager.subscribe(websocket, stock.ticker, bootstrap=True)
     try:
+        send_snapshot = True
+        current_sequence_number = 0
+        try:
+            if last_seen_sequence_number is not None:
+                (
+                    deltas,
+                    current_sequence_number,
+                ) = await order_book_cache.get_deltas_since_with_sequence(
+                    stock.id, last_seen_sequence_number
+                )
+                if connection.is_overflowed:
+                    return
+                if deltas is not None:
+                    await websocket.send_json(
+                        {
+                            "type": "deltas",
+                            "data": deltas,
+                            "current_sequence_number": current_sequence_number,
+                        }
+                    )
+                    send_snapshot = False
+
+            if send_snapshot:
+                (
+                    snapshot,
+                    current_sequence_number,
+                ) = await order_book_cache.get_order_book_with_sequence(stock.id)
+                if connection.is_overflowed:
+                    return
+                if not snapshot:
+                    await websocket.close(
+                        code=1008, reason=f"No order book found for {stock.ticker}"
+                    )
+                    return
+                await websocket.send_json(
+                    {
+                        "type": "snapshot",
+                        "data": snapshot,
+                        "current_sequence_number": current_sequence_number,
+                    }
+                )
+        except RedisError, OSError:
+            if not connection.is_overflowed:
+                await websocket.close(
+                    code=1011, reason="Temporary cache error; reconnect to resync"
+                )
+            return
+
+        if not ws_manager.complete_bootstrap(
+            websocket, stock.ticker, current_sequence_number
+        ):
+            return
+
         while True:
             await websocket.receive_text()
-    except WebSocketDisconnect:
+    except WebSocketDisconnect, RuntimeError:
         pass
     finally:
-        await ws_manager.unsubscribe(websocket, stock.ticker)
+        await ws_manager.unsubscribe(websocket, stock.ticker, connection=connection)

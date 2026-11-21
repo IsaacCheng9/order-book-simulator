@@ -98,6 +98,29 @@ class OrderBookCache:
         )
         return orjson.loads(data)
 
+    async def get_order_book_with_sequence(
+        self, stock_id: UUID
+    ) -> tuple[dict[str, Any] | None, int]:
+        """Fetch an order book snapshot and its delta sequence atomically."""
+        book_key = self._get_order_book_key(stock_id)
+        seq_key = self._get_delta_seq_key(stock_id)
+        if hasattr(self.redis, "mget"):
+            raw_book, raw_seq = await self.redis.mget([book_key, seq_key])
+        else:
+            raw_book = await self.redis.get(book_key)
+            raw_seq = await self.redis.get(seq_key)
+
+        snapshot: dict[str, Any] | None = None
+        if raw_book:
+            data = (
+                raw_book.decode()
+                if isinstance(raw_book, (bytes, bytearray))
+                else str(raw_book)
+            )
+            snapshot = orjson.loads(data)
+        sequence = int(raw_seq) if raw_seq else 0
+        return snapshot, sequence
+
     async def get_all_order_books(self) -> dict[str, dict[str, Any]]:
         """
         Gets all order book snapshots from Redis.
@@ -229,6 +252,54 @@ class OrderBookCache:
             for delta in deserialised_deltas
             if delta["sequence_number"] > sequence_number
         ]
+
+    async def get_deltas_since_with_sequence(
+        self, stock_id: UUID, sequence_number: int
+    ) -> tuple[list[dict[str, Any]] | None, int]:
+        """Fetch deltas after sequence_number and current sequence atomically."""
+        deltas_key = self._get_deltas_key(stock_id)
+        seq_key = self._get_delta_seq_key(stock_id)
+        if hasattr(self.redis, "pipeline"):
+            async with self.redis.pipeline(transaction=True) as pipe:
+                pipe.lrange(deltas_key, 0, -1)
+                pipe.get(seq_key)
+                all_deltas, raw_seq = await pipe.execute()
+        else:
+            all_deltas = await self.redis.lrange(  # pyrefly: ignore[not-async]
+                deltas_key, 0, -1
+            )
+            raw_seq = await self.redis.get(seq_key)
+
+        current_seq = int(raw_seq) if raw_seq else 0
+        if not all_deltas:
+            if sequence_number == current_seq:
+                return [], current_seq
+            return None, current_seq
+
+        deserialised_deltas: list[dict[str, Any]] = [
+            orjson.loads(delta) for delta in all_deltas
+        ]
+        oldest_seq = deserialised_deltas[0]["sequence_number"]
+        latest_seq = deserialised_deltas[-1]["sequence_number"]
+
+        # Trigger snapshot fallback if Redis reset (client ahead of server),
+        # the delta tail lags current_seq, or requested history was evicted.
+        if (
+            sequence_number > current_seq
+            or latest_seq < current_seq
+            or sequence_number < oldest_seq - 1
+        ):
+            return None, current_seq
+        if sequence_number == latest_seq:
+            return [], current_seq
+        return (
+            [
+                delta
+                for delta in deserialised_deltas
+                if delta["sequence_number"] > sequence_number
+            ],
+            current_seq,
+        )
 
     async def get_current_delta_sequence_number(self, stock_id: UUID) -> int:
         """
