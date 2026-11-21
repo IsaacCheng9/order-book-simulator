@@ -1,4 +1,5 @@
 from datetime import datetime
+from decimal import Decimal
 from uuid import UUID
 
 from sqlalchemy import desc, func, select
@@ -181,10 +182,24 @@ async def get_trade_analytics_by_stock(
     if row is None or row.trade_count == 0:
         raise ValueError(f"No trades found for stock {stock_id}")
 
-    # Calculate VWAP: total_value / total_volume
+    # Calculate VWAP using Decimal arithmetic: total_value / total_volume.
     vwap = None
-    if row.total_volume and row.total_value and row.total_volume > 0:
-        vwap = float(row.total_value) / float(row.total_volume)
+    if (
+        row.total_volume is not None
+        and row.total_value is not None
+        and row.total_volume > 0
+    ):
+        total_value = (
+            row.total_value
+            if isinstance(row.total_value, Decimal)
+            else Decimal(str(row.total_value))
+        )
+        total_volume = (
+            row.total_volume
+            if isinstance(row.total_volume, Decimal)
+            else Decimal(str(row.total_volume))
+        )
+        vwap = total_value / total_volume
 
     return {
         "trade_count": row.trade_count,
@@ -239,10 +254,24 @@ async def get_global_trade_analytics(
             "vwap": None,
         }
 
-    # Calculate VWAP: total_value / total_volume
+    # Calculate VWAP using Decimal arithmetic: total_value / total_volume.
     vwap = None
-    if row.total_volume and row.total_value and row.total_volume > 0:
-        vwap = float(row.total_value) / float(row.total_volume)
+    if (
+        row.total_volume is not None
+        and row.total_value is not None
+        and row.total_volume > 0
+    ):
+        total_value = (
+            row.total_value
+            if isinstance(row.total_value, Decimal)
+            else Decimal(str(row.total_value))
+        )
+        total_volume = (
+            row.total_volume
+            if isinstance(row.total_volume, Decimal)
+            else Decimal(str(row.total_volume))
+        )
+        vwap = total_value / total_volume
 
     return {
         "trade_count": row.trade_count,

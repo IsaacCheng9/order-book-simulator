@@ -91,6 +91,7 @@ class MarketDataAnalytics:
         ask_levels: list[PriceLevel],
         last_trade_price: Decimal | None,
         last_trade_quantity: Decimal | None,
+        trades: list[dict[str, Any]] | None = None,
     ) -> None:
         """
         Records order book state to Redis Stream using actual PriceLevels.
@@ -105,23 +106,47 @@ class MarketDataAnalytics:
             ask_levels: List of ask price levels from the order book.
             last_trade_price: Price of the last trade, if any.
             last_trade_quantity: Quantity of the last trade, if any.
+            trades: All fills executed during this book update, if any.
         """
         best_bid = max(bid_levels, key=lambda x: x.price).price if bid_levels else None
         best_ask = min(ask_levels, key=lambda x: x.price).price if ask_levels else None
+
+        trade_notional = Decimal(0)
+        trade_volume = Decimal(0)
+        if trades is not None:
+            for trade in trades:
+                trade_price = Decimal(str(trade["price"]))
+                trade_qty = Decimal(str(trade["quantity"]))
+                trade_notional += trade_price * trade_qty
+                trade_volume += trade_qty
+            if trades:
+                if last_trade_price is None:
+                    last_trade_price = Decimal(str(trades[-1]["price"]))
+                if last_trade_quantity is None:
+                    last_trade_quantity = Decimal(str(trades[-1]["quantity"]))
+        elif last_trade_price is not None and last_trade_quantity is not None:
+            trade_notional = last_trade_price * last_trade_quantity
+            trade_volume = last_trade_quantity
 
         now = datetime.now(UTC)
         market_data: dict[str, Any] = {
             "timestamp": now.isoformat(),
             "mid_price": str((best_bid + best_ask) / 2)
-            if best_bid and best_ask
+            if best_bid is not None and best_ask is not None
             else "",
-            "spread": str(best_ask - best_bid) if best_bid and best_ask else "",
+            "spread": str(best_ask - best_bid)
+            if best_bid is not None and best_ask is not None
+            else "",
             "bid_depth": str(sum(level.quantity for level in bid_levels)),
             "ask_depth": str(sum(level.quantity for level in ask_levels)),
-            "last_trade_price": str(last_trade_price) if last_trade_price else "",
-            "last_trade_quantity": str(last_trade_quantity)
-            if last_trade_quantity
+            "last_trade_price": str(last_trade_price)
+            if last_trade_price is not None
             else "",
+            "last_trade_quantity": str(last_trade_quantity)
+            if last_trade_quantity is not None
+            else "",
+            "trade_notional": str(trade_notional) if trade_volume > 0 else "",
+            "trade_volume": str(trade_volume) if trade_volume > 0 else "",
         }
 
         stream_key = self._get_stream_key(stock_id)
@@ -142,44 +167,62 @@ class MarketDataAnalytics:
             window: Time window for the VWAP calculation
 
         Returns:
-            VWAP for the stock over the time window.
+            VWAP for the stock over the time window, or None if no trades
+            occurred in the window.
         """
-        # Calculate start time in milliseconds
+        # Calculate start time in milliseconds.
         now = datetime.now(UTC)
         start_time = int((now - window).timestamp() * 1000)
 
-        # Format stream IDs properly for Redis
+        # Use '+' as the upper bound so entries in the current millisecond
+        # with sequence > 0 (or slight clock skew) are included.
         start_id = f"{start_time}-0"
-        end_id = f"{int(now.timestamp() * 1000)}-0"
-
         entries = await self.redis.xrange(
-            self._get_stream_key(stock_id), min=start_id, max=end_id
+            self._get_stream_key(stock_id), min=start_id, max="+"
         )
 
         if not entries:
             return None
 
-        # Convert stream data to Polars DataFrame
-        df = pl.DataFrame([{**entry[1], "stream_id": entry[0]} for entry in entries])
+        total_notional = Decimal(0)
+        total_volume = Decimal(0)
+        for _, fields in entries:
+            has_notional, notional_raw = self._read_stream_field(
+                fields, "trade_notional"
+            )
+            has_volume, volume_raw = self._read_stream_field(fields, "trade_volume")
+            if has_notional and has_volume:
+                if notional_raw != "" and volume_raw != "":
+                    total_notional += Decimal(notional_raw)
+                    total_volume += Decimal(volume_raw)
+                continue
 
-        return (
-            df.filter(pl.col("last_trade_price") != "")
-            .with_columns(
-                [
-                    pl.col("last_trade_price").cast(pl.Float64).alias("price"),
-                    pl.col("last_trade_quantity").cast(pl.Float64).alias("quantity"),
-                ]
-            )
-            .with_columns((pl.col("price") * pl.col("quantity")).alias("price_volume"))
-            .select(
-                [
-                    (pl.col("price_volume").sum() / pl.col("quantity").sum()).alias(
-                        "vwap"
-                    )
-                ]
-            )
-            .item()
-        )
+            _, price_raw = self._read_stream_field(fields, "last_trade_price")
+            _, qty_raw = self._read_stream_field(fields, "last_trade_quantity")
+            if price_raw != "" and qty_raw != "":
+                price = Decimal(price_raw)
+                quantity = Decimal(qty_raw)
+                total_notional += price * quantity
+                total_volume += quantity
+
+        if total_volume <= Decimal(0):
+            return None
+
+        return total_notional / total_volume
+
+    @staticmethod
+    def _read_stream_field(fields: dict[Any, Any], name: str) -> tuple[bool, str]:
+        """Read a string or bytes Redis stream field safely."""
+        if name in fields:
+            raw = fields[name]
+        else:
+            encoded = name.encode("utf-8")
+            if encoded not in fields:
+                return False, ""
+            raw = fields[encoded]
+        if isinstance(raw, (bytes, bytearray)):
+            return True, raw.decode("utf-8")
+        return True, str(raw)
 
     async def get_market_depth(self, stock_id: UUID) -> dict:
         """
