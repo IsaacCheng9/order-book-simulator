@@ -8,6 +8,7 @@ import orjson
 from aiokafka import AIOKafkaProducer
 
 from order_book_simulator.common.cache import order_book_cache
+from order_book_simulator.common.events import EVENT_SCHEMA_VERSION
 from order_book_simulator.common.models import Delta
 from order_book_simulator.market_data.analytics import MarketDataAnalytics
 from order_book_simulator.matching.order_book import OrderBook
@@ -62,6 +63,8 @@ class MatchingEngine:
         ticker: str,
         order_book: OrderBook,
         trades: list[dict[str, Any]],
+        order_updates: list[dict[str, Any]] | None = None,
+        event_time: datetime | None = None,
     ) -> None:
         """
         Publishes market data updates for a stock.
@@ -71,14 +74,18 @@ class MatchingEngine:
             ticker: The ticker symbol for the stock.
             order_book: The order book for the stock.
             trades: The list of trades that triggered this update.
+            order_updates: Canonical order state updates produced by the
+                matching step.
+            event_time: Deterministic UTC event timestamp.
         """
+        resolved_time = event_time if event_time is not None else datetime.now(UTC)
         # Serialise trades for Kafka and Redis.
         if trades:
             for trade in trades:
                 if "id" in trade:
                     trade["id"] = str(trade["id"])
                 if "timestamp" not in trade:
-                    trade["timestamp"] = datetime.now(UTC).isoformat()
+                    trade["timestamp"] = resolved_time.isoformat()
                 trade["price"] = str(trade["price"])
                 trade["quantity"] = str(trade["quantity"])
                 trade["buyer_order_id"] = str(trade["buyer_order_id"])
@@ -89,10 +96,14 @@ class MatchingEngine:
         # Get snapshot for Kafka payload (already string-serialised).
         snapshot = order_book.get_full_snapshot()
         payload = {
+            "schema_version": EVENT_SCHEMA_VERSION,
             "stock_id": str(stock_id),
             "ticker": ticker,
+            "timestamp": resolved_time.isoformat(),
+            "sequence_number": order_book.delta_buffer.current_sequence,
             **snapshot,
             "trades": trades,
+            "order_updates": order_updates if order_updates is not None else [],
         }
         await self.producer.send_and_wait(
             "market-data",
@@ -167,7 +178,9 @@ class MatchingEngine:
 
         cancel_time = self._parse_event_time(cancel_message.get("cancelled_at"))
         is_success = order_book.cancel_order(
-            order_id, timestamp=cancel_time.timestamp()
+            order_id,
+            timestamp=cancel_time.timestamp(),
+            cancelled_at=cancel_time,
         )
         if not is_success:
             return {"success": False, "reason": "Order not found"}
@@ -190,6 +203,8 @@ class MatchingEngine:
             order_book.ticker,
             order_book,
             [],  # No trades from the cancellation.
+            order_updates=order_book.last_order_updates,
+            event_time=cancel_time,
         )
         return {"success": True, "reason": "Order cancelled"}
 
@@ -239,4 +254,11 @@ class MatchingEngine:
             self._publish_deltas_to_multicast(deltas)
 
         # Always publish market data updates, even if no trades occurred.
-        await self._publish_market_data(stock_id, ticker, order_book, trades or [])
+        await self._publish_market_data(
+            stock_id,
+            ticker,
+            order_book,
+            trades or [],
+            order_updates=order_book.last_order_updates,
+            event_time=event_time,
+        )

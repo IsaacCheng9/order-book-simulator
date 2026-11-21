@@ -8,6 +8,7 @@ from aiokafka import AIOKafkaProducer
 from aiokafka.errors import KafkaError
 from fastapi import HTTPException
 
+from order_book_simulator.common.events import EVENT_SCHEMA_VERSION
 from order_book_simulator.common.models import OrderRecord
 
 logger = logging.getLogger(__name__)
@@ -104,6 +105,7 @@ class OrderProducer:
             )
 
         cancel_record = {
+            "schema_version": EVENT_SCHEMA_VERSION,
             "type": "cancel",
             "order_id": str(order_id),
             "stock_id": str(stock_id),
@@ -145,8 +147,14 @@ class OrderProducer:
 
         # Convert types before serialising.
         kafka_record = {
+            "schema_version": EVENT_SCHEMA_VERSION,
             "type": "order",
             "id": str(order_record["id"]),
+            "user_id": (
+                str(order_record["user_id"])
+                if order_record.get("user_id") is not None
+                else None
+            ),
             "stock_id": str(order_record["stock_id"]),
             "ticker": order_record["ticker"],
             "order_type": order_record["type"].value,
@@ -157,6 +165,8 @@ class OrderProducer:
                 else None
             ),
             "quantity": str(order_record["quantity"]),
+            "time_in_force": order_record["time_in_force"],
+            "client_order_id": order_record["client_order_id"],
             "gateway_received_at": order_record["gateway_received_at"],
         }
 

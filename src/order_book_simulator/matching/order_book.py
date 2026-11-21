@@ -5,12 +5,20 @@ from uuid import UUID, uuid5
 
 from sortedcontainers import SortedDict
 
+from order_book_simulator.common.events import (
+    MAX_NUMERIC_20_8_VALUE,
+    EventValidationError,
+    validate_notional_20_8,
+    validate_numeric_20_8,
+)
 from order_book_simulator.common.models import (
+    DEFAULT_ORDER_USER_ID,
     Delta,
     DeltaType,
     FilledOrder,
     OrderBookEntry,
     OrderSide,
+    OrderStatus,
     OrderType,
     PriceLevel,
 )
@@ -48,11 +56,47 @@ class OrderBook:
         self.processed_order_ids: set[UUID] = set()
         self.delta_buffer: DeltaBuffer = DeltaBuffer()
         self._last_deltas: list[Delta] = []
+        self._last_order_updates: list[dict[str, Any]] = []
 
     @property
     def last_deltas(self) -> list[Delta]:
         """Return deltas emitted by the most recent order or cancel call."""
         return list(self._last_deltas)
+
+    @property
+    def last_order_updates(self) -> list[dict[str, Any]]:
+        """Return canonical order state updates from the most recent operation."""
+        return list(self._last_order_updates)
+
+    def _serialize_order_update(
+        self,
+        entry: OrderBookEntry,
+        status: OrderStatus,
+        updated_at: datetime,
+    ) -> dict[str, Any]:
+        """Serialise an OrderBookEntry into a canonical order-state update."""
+        original_qty = (
+            entry.original_quantity
+            if entry.original_quantity is not None
+            else entry.quantity
+        )
+        created_at = entry.created_at if entry.created_at is not None else updated_at
+        return {
+            "id": str(entry.id),
+            "user_id": str(entry.user_id),
+            "stock_id": str(self.stock_id),
+            "type": entry.order_type.value,
+            "side": entry.side.value,
+            "status": status.value,
+            "price": str(entry.price) if entry.price is not None else None,
+            "quantity": str(original_qty),
+            "filled_quantity": str(entry.filled_quantity),
+            "total_fee": "0",
+            "time_in_force": entry.time_in_force,
+            "client_order_id": entry.client_order_id,
+            "created_at": created_at.isoformat(),
+            "updated_at": updated_at.isoformat(),
+        }
 
     def _record_delta(
         self,
@@ -84,6 +128,7 @@ class OrderBook:
         opposing_levels: SortedDict[Decimal, PriceLevel],
         is_buy: bool,
         event_timestamp: float,
+        event_time: datetime,
     ) -> list[FilledOrder]:
         """
         Matches an incoming order against resting orders in the order book.
@@ -93,6 +138,7 @@ class OrderBook:
             opposing_levels: The price levels to match against.
             is_buy: True if the incoming order is a buy order.
             event_timestamp: Deterministic event timestamp in Unix seconds.
+            event_time: Deterministic UTC event datetime.
 
         Returns:
             A list of fills from matching the order.
@@ -105,6 +151,7 @@ class OrderBook:
 
         # Track the price levels that need to be removed after matching.
         levels_to_remove: list[Decimal] = []
+        matched_resting: list[OrderBookEntry] = []
 
         for price, level in opposing_levels.items():
             if incoming_order.quantity <= Decimal(0):
@@ -127,7 +174,10 @@ class OrderBook:
                 # Match the maximum quantity possible.
                 match_quantity = min(incoming_order.quantity, resting_order.quantity)
                 incoming_order.quantity -= match_quantity
+                incoming_order.filled_quantity += match_quantity
                 resting_order.quantity -= match_quantity
+                resting_order.filled_quantity += match_quantity
+                matched_resting.append(resting_order)
                 fill_id = uuid5(
                     FILL_ID_NAMESPACE,
                     f"{self.stock_id}:{incoming_order.id}:{order_id}:{len(trades)}",
@@ -197,6 +247,16 @@ class OrderBook:
         for price_level in levels_to_remove:
             del opposing_levels[price_level]
 
+        for resting_order in matched_resting:
+            resting_status = (
+                OrderStatus.FILLED
+                if resting_order.quantity == Decimal(0)
+                else OrderStatus.PARTIALLY_FILLED
+            )
+            self._last_order_updates.append(
+                self._serialize_order_update(resting_order, resting_status, event_time)
+            )
+
         return trades
 
     def _validate_order(
@@ -222,6 +282,10 @@ class OrderBook:
 
         if not quantity.is_finite() or quantity <= Decimal(0):
             raise OrderRejectionError("Order quantity must be positive.")
+        try:
+            validate_numeric_20_8(quantity, "quantity")
+        except EventValidationError as exc:
+            raise OrderRejectionError(str(exc)) from exc
 
         if order_type == OrderType.MARKET:
             if price is not None:
@@ -233,6 +297,11 @@ class OrderBook:
 
         if not price.is_finite() or price <= Decimal(0):
             raise OrderRejectionError("Limit order price must be positive.")
+        try:
+            validate_numeric_20_8(price, "price")
+            validate_notional_20_8(price, quantity, "Order notional")
+        except EventValidationError as exc:
+            raise OrderRejectionError(str(exc)) from exc
 
     def add_order(self, order: dict[str, Any]) -> list[dict]:
         """
@@ -259,10 +328,34 @@ class OrderBook:
         quantity = Decimal(str(order["quantity"]))
         self._validate_order(order_type, quantity, price)
         self._last_deltas = []
+        self._last_order_updates = []
 
         order_id = _coerce_uuid(order["id"])
         if order_id in self.processed_order_ids:
             return []
+
+        # Guard aggregated price-level quantity against NUMERIC(20, 8) overflow
+        # before mutating book state.
+        if order_type == OrderType.LIMIT and price is not None:
+            same_side_levels = self.bid_levels if is_buy else self.ask_levels
+            existing_level = same_side_levels.get(price)
+            if (
+                existing_level is not None
+                and existing_level.quantity + quantity > MAX_NUMERIC_20_8_VALUE
+            ):
+                raise OrderRejectionError(
+                    "Order would cause price level quantity to exceed "
+                    "NUMERIC(20, 8) limit."
+                )
+
+        raw_user_id = order.get("user_id")
+        user_id = (
+            _coerce_uuid(raw_user_id)
+            if raw_user_id is not None
+            else DEFAULT_ORDER_USER_ID
+        )
+        time_in_force = order.get("time_in_force")
+        client_order_id = order.get("client_order_id")
 
         raw_created_at = order.get("created_at")
         if isinstance(raw_created_at, datetime):
@@ -289,13 +382,19 @@ class OrderBook:
             quantity=quantity,
             price=price,
             entry_time=entry_time_us,
+            original_quantity=quantity,
+            filled_quantity=Decimal(0),
+            user_id=user_id,
+            time_in_force=time_in_force,
+            client_order_id=client_order_id,
+            created_at=created_at,
         )
         self.processed_order_ids.add(order_id)
 
         # Match against the opposite side of the book.
         opposing_orders = self.ask_levels if is_buy else self.bid_levels
         fills: list[FilledOrder] = self._match_orders(
-            incoming_order, opposing_orders, is_buy, event_timestamp
+            incoming_order, opposing_orders, is_buy, event_timestamp, created_at
         )
 
         # If it's a limit order and there's remaining quantity, add it to the
@@ -323,6 +422,19 @@ class OrderBook:
                 timestamp=event_timestamp,
             )
 
+        if incoming_order.quantity == Decimal(0):
+            incoming_status = OrderStatus.FILLED
+        elif order_type == OrderType.MARKET:
+            # Unfilled market remainder does not rest on the book.
+            incoming_status = OrderStatus.CANCELLED
+        elif incoming_order.filled_quantity > Decimal(0):
+            incoming_status = OrderStatus.PARTIALLY_FILLED
+        else:
+            incoming_status = OrderStatus.PENDING
+        self._last_order_updates.append(
+            self._serialize_order_update(incoming_order, incoming_status, created_at)
+        )
+
         trade_timestamp = created_at.isoformat()
         return [
             {
@@ -338,23 +450,40 @@ class OrderBook:
         ]
 
     def cancel_order(
-        self, order_id: UUID | str, timestamp: float | None = None
+        self,
+        order_id: UUID | str,
+        timestamp: float | None = None,
+        cancelled_at: datetime | None = None,
     ) -> bool:
-        """
-        Cancels an order from the order book.
+        """Cancel an order from the order book.
 
         Args:
             order_id: The ID of the order to cancel.
             timestamp: Optional deterministic cancel timestamp (Unix seconds).
+            cancelled_at: Optional deterministic UTC cancel datetime.
 
         Returns:
             True if the order was cancelled, False otherwise.
         """
         self._last_deltas = []
+        self._last_order_updates = []
         normalised_id = _coerce_uuid(order_id)
         order: OrderBookEntry | None = self.order_id_to_order.get(normalised_id)
         if not order:
             return False
+
+        if cancelled_at is not None:
+            cancel_dt = (
+                cancelled_at
+                if cancelled_at.tzinfo is not None
+                else cancelled_at.replace(tzinfo=UTC)
+            )
+            if timestamp is None:
+                timestamp = cancel_dt.timestamp()
+        elif timestamp is not None:
+            cancel_dt = datetime.fromtimestamp(timestamp, tz=UTC)
+        else:
+            cancel_dt = datetime.now(UTC)
 
         # Remove from the price level if it's a limit order.
         levels: SortedDict[Decimal, PriceLevel] = (
@@ -384,8 +513,11 @@ class OrderBook:
                         timestamp=timestamp,
                     )
 
-        # Remove from the order tracking.
+        # Remove from the order tracking and record terminal cancellation state.
         del self.order_id_to_order[normalised_id]
+        self._last_order_updates.append(
+            self._serialize_order_update(order, OrderStatus.CANCELLED, cancel_dt)
+        )
         return True
 
     def get_full_snapshot(self) -> dict:

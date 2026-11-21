@@ -135,6 +135,7 @@ def mock_db(monkeypatch):
 
     mock_factory = MagicMock(return_value=mock_session)
     mock_persist_snapshot = AsyncMock()
+    mock_persist_order = AsyncMock()
     mock_persist_trades = AsyncMock()
 
     monkeypatch.setattr(db_consumer_module, "AsyncSessionLocal", mock_factory)
@@ -143,12 +144,14 @@ def mock_db(monkeypatch):
         "persist_market_snapshot",
         mock_persist_snapshot,
     )
+    monkeypatch.setattr(db_consumer_module, "persist_order", mock_persist_order)
     monkeypatch.setattr(db_consumer_module, "persist_trades", mock_persist_trades)
 
     return SimpleNamespace(
         factory=mock_factory,
         session=mock_session,
         persist_snapshot=mock_persist_snapshot,
+        persist_order=mock_persist_order,
         persist_trades=mock_persist_trades,
     )
 
@@ -578,3 +581,196 @@ async def test_start_does_not_double_flush_on_mid_loop_failure(
     assert fake_consumer.commits == []
     assert fake_consumer.stopped is True
     assert consumer.consumer is None
+
+
+@pytest.mark.asyncio
+async def test_flush_batch_persists_order_updates_and_passes_known_ids(
+    consumer, mock_db
+):
+    """Upsert order_updates first and pass their IDs to persist_trades."""
+    stock_id = str(uuid4())
+    buyer_id = str(uuid4())
+    seller_id = str(uuid4())
+    now = "2026-07-26T12:00:00+00:00"
+    data = create_market_data(stock_id)
+    data["order_updates"] = [
+        {
+            "id": buyer_id,
+            "user_id": str(uuid4()),
+            "stock_id": stock_id,
+            "type": "LIMIT",
+            "side": "BUY",
+            "status": "FILLED",
+            "price": "100.50",
+            "quantity": "5",
+            "filled_quantity": "5",
+            "total_fee": "0",
+            "time_in_force": "GTC",
+            "client_order_id": "cid-buy",
+            "created_at": now,
+            "updated_at": now,
+        },
+        {
+            "id": seller_id,
+            "user_id": str(uuid4()),
+            "stock_id": stock_id,
+            "type": "LIMIT",
+            "side": "SELL",
+            "status": "FILLED",
+            "price": "100.50",
+            "quantity": "5",
+            "filled_quantity": "5",
+            "total_fee": "0",
+            "time_in_force": "GTC",
+            "client_order_id": "cid-sell",
+            "created_at": now,
+            "updated_at": now,
+        },
+    ]
+    data["trades"] = [
+        {
+            "id": str(uuid4()),
+            "price": "100.50",
+            "quantity": "5",
+            "buyer_order_id": buyer_id,
+            "seller_order_id": seller_id,
+            "timestamp": now,
+        }
+    ]
+    consumer.batch = [data]
+
+    await consumer._flush_batch()
+
+    assert mock_db.persist_order.await_count == 2
+    mock_db.persist_snapshot.assert_awaited_once()
+    mock_db.persist_trades.assert_awaited_once()
+    passed_known = mock_db.persist_trades.await_args.kwargs["known_order_ids"]
+    assert {str(oid) for oid in passed_known} == {buyer_id, seller_id}
+
+
+@pytest.mark.parametrize(
+    "bad_payload",
+    [
+        {
+            "schema_version": 2,
+            "stock_id": str(uuid4()),
+            "ticker": "AAPL",
+            "bids": [],
+            "asks": [],
+        },
+        {"stock_id": "not-a-uuid", "ticker": "AAPL", "bids": [], "asks": []},
+        {
+            "stock_id": str(uuid4()),
+            "ticker": "AAPL",
+            "bids": [{"price": "1E+30", "quantity": "1"}],
+            "asks": [],
+        },
+        {
+            "stock_id": str(uuid4()),
+            "ticker": "AAPL",
+            "bids": [],
+            "asks": [],
+            "order_updates": [
+                {
+                    "id": str(uuid4()),
+                    "user_id": str(uuid4()),
+                    "stock_id": str(uuid4()),
+                    "type": "LIMIT",
+                    "side": "BUY",
+                    "status": "FILLED",
+                    "price": "100",
+                    "quantity": "10",
+                    "filled_quantity": "5",
+                    "created_at": "2026-07-26T12:00:00+00:00",
+                    "updated_at": "2026-07-26T12:00:00+00:00",
+                }
+            ],
+        },
+    ],
+)
+@pytest.mark.asyncio
+async def test_semantic_invalid_market_data_skipped_without_blocking_neighbours(
+    bad_payload: dict[str, Any],
+    mock_db,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    """Reject semantically invalid events before batching while preserving valid ones."""
+    consumer = MarketDataDBConsumer(
+        batch_size=50,
+        batch_timeout_ms=60_000,
+        max_flush_retries=1,
+        retry_backoff_ms=0,
+    )
+    tp = TopicPartition("market-data", 0)
+    valid_before = orjson.dumps(create_market_data())
+    invalid_middle = orjson.dumps(bad_payload)
+    valid_after = orjson.dumps(create_market_data())
+
+    use_fake_kafka(
+        monkeypatch,
+        [
+            {
+                tp: [
+                    make_record(valid_before, offset=10),
+                    make_record(invalid_middle, offset=11),
+                    make_record(valid_after, offset=12),
+                ]
+            },
+            StopPolling(),
+        ],
+    )
+
+    with pytest.raises(StopPolling):
+        await consumer.start()
+
+    fake_consumer = FakeKafkaConsumer.last_instance
+    assert fake_consumer is not None
+    assert mock_db.persist_snapshot.await_count == 2
+    assert fake_consumer.commits == [{tp: 13}]
+
+
+@pytest.mark.asyncio
+async def test_semantic_invalid_after_buffered_valid_stays_uncommitted_on_db_error(
+    mock_db,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    """Never commit a semantically invalid offset ahead of a failed earlier batch."""
+    consumer = MarketDataDBConsumer(
+        batch_size=50,
+        batch_timeout_ms=60_000,
+        max_flush_retries=1,
+        retry_backoff_ms=0,
+    )
+    tp = TopicPartition("market-data", 0)
+    valid_payload = orjson.dumps(create_market_data())
+    bad_payload = orjson.dumps(
+        {
+            "schema_version": 99,
+            "stock_id": str(uuid4()),
+            "ticker": "AAPL",
+            "bids": [],
+            "asks": [],
+        }
+    )
+    mock_db.persist_snapshot.side_effect = RuntimeError("transient db disconnect")
+
+    use_fake_kafka(
+        monkeypatch,
+        [
+            {
+                tp: [
+                    make_record(valid_payload, offset=20),
+                    make_record(bad_payload, offset=21),
+                ]
+            },
+            StopPolling(),
+        ],
+    )
+
+    with pytest.raises(RuntimeError, match="transient db disconnect"):
+        await consumer.start()
+
+    fake_consumer = FakeKafkaConsumer.last_instance
+    assert fake_consumer is not None
+    assert fake_consumer.commits == []
+    assert fake_consumer.stopped is True
