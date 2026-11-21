@@ -10,30 +10,38 @@ and full REST API access via FastAPI.
 
 ## Key Features
 
-- **Order matching engine** – price-time priority matching for limit and market
-  orders
+- **Order matching engine** – price-time priority matching for limit and market
+  orders, with deterministic Kafka `orders` journal replay on startup to
+  rebuild resting books, per-symbol delta sequences, and Redis state
 - **Real-time market data via WebSocket streaming** – server-push delta fan-out
-  with per-client bounded queues, sequence-based reconnect recovery, and 86%
-  bandwidth reduction over snapshot polling (mock-client unit benchmark reaches
-  2.7M enqueues/s; see [benchmark caveats](#websocket-benchmark-results))
-- **UDP multicast market data feed (experimental)** – binary wire format with
-  sequence gap detection and HTTP recovery fallback (inspired by CME MDP and
-  Nasdaq ITCH; the publisher is wired into the matching service, while the
-  subscriber is a standalone reference client not deployed in Docker Compose)
+  with atomic snapshot-plus-sequence bootstrap, per-client bounded queues that
+  disconnect overflowing consumers with close code `1008` to resync, supervised
+  Redis Pub/Sub fan-out, and 86.1% payload bandwidth reduction over full
+  snapshots (111.4 μs p50 over `127.0.0.1` TCP loopback; see
+  [benchmark results](#websocket-benchmark-results))
+- **UDP multicast market data feed (experimental)** – per-symbol binary wire
+  format (`!BQHB` + UTF-8 symbol) with exact `[expected, target)` gap recovery,
+  stale-snapshot rejection, and heartbeat liveness (49.7 μs p50 one-way
+  delivery over `127.0.0.1` UDP loopback; the publisher is wired into the
+  matching service, while the subscriber is a standalone reference client not
+  deployed in Docker Compose)
 - **Delta publishing** – sequence-based incremental order book updates with
-  bounded buffer and snapshot fallback
-- **Advanced analytics** – VWAP calculations, trade metrics, market activity
-  tracking, and historical data analysis
+  bounded buffer and atomic snapshot fallback
+- **Truthful order ledger and idempotent persistence** – versioned Kafka event
+  contracts with semantic validation, deterministic UUIDv5 fill IDs, monotonic
+  PostgreSQL `order_` upserts (including resting, partially filled, filled, and
+  cancelled orders), and conflict-safe trade writes
+- **Advanced analytics** – `Decimal`-exact VWAP calculations across all fills
+  in Redis and PostgreSQL, trade metrics, and market activity tracking
 - **Interactive web-based Streamlit dashboard** – market monitoring, analysis,
   and order submission
 - **REST API via FastAPI** – full programmatic access with comprehensive
-  documentation
-- **Market simulation tool** – automated order generation for demonstration
-  purposes
-- **Highly performant, scalable architecture** – Redis caching and Kafka
-  messaging for real-time processing
-- **Containerised deployment** – easy deployment and local development via
-  Docker Compose
+  documentation and degraded `/v1/health` reporting (`503` on Redis fan-out or
+  Kafka producer failures)
+- **Market simulation tool** – automated order generation with deadlock-free
+  cancellation and shutdown
+- **Containerised deployment** – Docker Compose stack with automated smoke and
+  `SIGKILL` + empty-Redis crash-recovery verification in CI
 
 ## Screenshots
 
@@ -180,84 +188,91 @@ orchestration overhead.
 
 ##### WebSocket Benchmark Results
 
-> **Note:** These unit benchmarks measure in-process `put_nowait` enqueue
-> throughput and enqueue latency (including the polling speedup comparison)
-> against mock WebSocket connections, not end-to-end network delivery or socket
-> I/O. The table below was recorded before slow-consumer disconnection on full
-> queues, when undrained mock queues dropped overflow messages rather than
-> delivering them.
+> **Note:** The tables below separate in-process async delivery (mock
+> `send_json`, 100% of broadcasts drained with zero slow-consumer disconnects)
+> from real `127.0.0.1` TCP loopback delivery (FastAPI/Uvicorn server to
+> `aiohttp` WebSocket clients, 500 measured operations after 50 warmup
+> operations). Measured on Apple Silicon macOS with Python 3.14.0.
 
-Fan-out throughput and push latency from order book operation to enqueue
-completion, measured with mock WebSocket connections:
+In-process async fan-out delivery (broadcast plus `asyncio` sender-task drain
+to mock WebSockets, 100% delivered):
 
-| Subscribers | Fan-Out (enqueues/s) | Push Latency p50 (μs) | Push Latency p99 (μs) |
-| ----------: | --------------: | --------------------: | --------------------: |
-|           1 |       2,103,421 |                  10.1 |                  31.5 |
-|          10 |       2,689,678 |                  13.2 |                  26.5 |
-|          50 |       2,775,645 |                  27.9 |                  52.3 |
-|         100 |       2,753,206 |                  45.9 |                  61.6 |
-|         500 |       2,694,437 |                 191.3 |                 246.1 |
-|       1,000 |       2,714,265 |                 374.0 |                 516.0 |
+| Subscribers | Broadcasts/s | Delivered msg/s (broadcasts × subscribers) | Push Latency p50 (μs) | Push Latency p99 (μs) |
+| ----------: | -----------: | -----------------------------------------: | --------------------: | --------------------: |
+|           1 |      175,608 |                                    175,608 |                  32.2 |                  90.2 |
+|          10 |       13,832 |                                    138,319 |                  92.1 |                 158.8 |
+|          50 |        2,648 |                                    132,400 |                 417.6 |               3,667.7 |
+|         100 |        1,213 |                                    121,326 |                 907.5 |               4,026.2 |
+|         500 |          192 |                                     96,041 |               5,103.5 |              59,616.5 |
+|       1,000 |           80 |                                     80,019 |              10,105.1 |             128,057.9 |
 
-Throughput stays flat at ~2.7M msg/s thanks to non-blocking `put_nowait` on
-per-client bounded queues. Slow consumers get messages dropped instead of
-blocking broadcast to other clients.
+Per-client bounded queues isolate slow consumers from other subscribers; any
+client whose queue overflows is disconnected with WebSocket close code `1008`
+so it reconnects cleanly via atomic snapshot-plus-sequence bootstrap.
 
-Push latency vs polling comparison (single subscriber):
+Real loopback WebSocket delivery (`OrderBook.add_order` ->
+`WebSocketConnectionManager` -> FastAPI/Uvicorn -> `127.0.0.1` TCP -> all
+`aiohttp` clients finish JSON decode; multi-subscriber rows measure
+all-subscriber fan-out completion across `N` clients, not per-client median):
 
-| Polling Interval | Avg Polling Latency | WebSocket Speedup |
-| ---------------: | ------------------: | ----------------: |
-|              1ms |               0.5ms |               51x |
-|             10ms |               5.0ms |              513x |
-|             50ms |              25.0ms |            2,564x |
-|            100ms |              50.0ms |            5,128x |
-|            500ms |             250.0ms |           25,641x |
-|          1,000ms |             500.0ms |           51,282x |
+| Subscribers | Operations | Loopback p50 (μs) | Loopback p95 (μs) | Loopback p99 (μs) |
+| ----------: | ---------: | ----------------: | ----------------: | ----------------: |
+|           1 |        500 |             111.4 |             133.2 |             161.5 |
+|          10 |        500 |             263.6 |             334.5 |             483.2 |
+|          50 |        500 |             895.6 |             993.7 |           1,084.7 |
 
-Delta streaming achieves an **86.1% bandwidth reduction** over snapshot polling
-(269 bytes vs 1,938 bytes average per update).
+Single-subscriber loopback WebSocket p50 (`111.4 μs`) vs theoretical average
+polling wait (`interval / 2`, excluding HTTP polling transport overhead):
+
+| Polling Interval | Theoretical Average Wait (`interval / 2`) | Ratio vs Loopback WS p50 |
+| ---------------: | ----------------------------------------: | -----------------------: |
+|              1ms |                                     0.5ms |                     4.5x |
+|             10ms |                                     5.0ms |                    44.9x |
+|             50ms |                                    25.0ms |                   224.4x |
+|            100ms |                                    50.0ms |                   448.8x |
+|            500ms |                                   250.0ms |                 2,243.8x |
+|          1,000ms |                                   500.0ms |                 4,487.7x |
+
+Delta streaming achieves an **86.1% payload bandwidth reduction** over full
+snapshots (269 bytes vs 1,938 bytes average per update).
 
 ##### UDP Multicast vs WebSocket Benchmark Results
 
-> **Note:** Neither side in this unit benchmark measures real network I/O –
-> it compares publisher-side serialisation and a mocked UDP `sendto` against
-> in-process WebSocket `put_nowait` enqueues, excluding network transmission
-> and subscriber recovery.
+> **Note:** The scaling tables compare mocked-I/O CPU and scheduling cost
+> (single UDP `encode` + mocked `sendto` vs N WebSocket enqueues plus async
+> drain with 100% delivery). The loopback figure below measures real one-way
+> UDP socket delivery (`OrderBook.add_order` -> `MulticastPublisher.send()` ->
+> `MulticastSubscriber.receive_once()`) over `127.0.0.1`.
 
-Publisher-side cost per broadcast comparing UDP multicast (single `sendto`) vs
-WebSocket (N `put_nowait` enqueues):
+Publisher-side cost per broadcast (mocked I/O, 100% delivered):
 
-| Subscribers | UDP Multicast (μs/msg) | WebSocket (μs/msg) |  Ratio |
-| ----------: | ---------------------: | -----------------: | -----: |
-|           1 |                   15.4 |                0.5 |  0.03x |
-|          10 |                   17.4 |                3.8 |  0.22x |
-|          50 |                   16.4 |               18.3 |  1.12x |
-|         100 |                   15.0 |               37.6 |  2.51x |
-|         500 |                   17.0 |              190.9 | 11.22x |
-|       1,000 |                    8.9 |              414.5 | 46.44x |
-|       5,000 |                    9.1 |            2,396.9 | 264.6x |
-|      10,000 |                   12.4 |            5,447.5 | 440.4x |
+| Subscribers | UDP Multicast (μs/msg) | WebSocket (μs/msg) |     Ratio |
+| ----------: | ---------------------: | -----------------: | --------: |
+|           1 |                   5.87 |               5.80 |     0.99x |
+|          10 |                   5.57 |              67.32 |    12.08x |
+|          50 |                   5.69 |             383.92 |    67.49x |
+|         100 |                   5.54 |             788.81 |   142.28x |
+|         500 |                   5.56 |           4,890.63 |   879.66x |
+|       1,000 |                   5.84 |          12,562.52 | 2,151.02x |
 
-UDP multicast publisher cost stays flat at ~12-17 μs regardless of subscriber
-count, while WebSocket scales linearly. At 10,000 subscribers, UDP multicast is
-**~440x cheaper** per broadcast.
+Order book to publish/drain latency (mocked I/O, p50):
 
-End-to-end publish latency (order book operation to deliver) shows the same O(1)
-vs O(N) pattern:
+| Subscribers | UDP Multicast p50 (μs) | WebSocket p50 (μs) |   Ratio |
+| ----------: | ---------------------: | -----------------: | ------: |
+|           1 |                   20.5 |               38.3 |   1.87x |
+|          10 |                   19.2 |              109.5 |   5.72x |
+|          50 |                   18.5 |              462.7 |  24.96x |
+|         100 |                   18.6 |              903.7 |  48.63x |
+|         500 |                   18.0 |            4,930.0 | 273.25x |
+|       1,000 |                   18.0 |           10,268.9 | 570.49x |
 
-| Subscribers | UDP Multicast p50 (μs) | WebSocket p50 (μs) |  Ratio |
-| ----------: | ---------------------: | -----------------: | -----: |
-|           1 |                   23.1 |               13.0 |  0.57x |
-|          10 |                   22.3 |               16.4 |  0.74x |
-|          50 |                   22.6 |               31.7 |  1.40x |
-|         100 |                   21.6 |               50.2 |  2.32x |
-|         500 |                   22.5 |              200.2 |  8.91x |
-|       1,000 |                   21.2 |              382.3 | 18.03x |
-|       5,000 |                   22.5 |            2,147.7 | 95.63x |
-|      10,000 |                   22.3 |            4,785.3 | 214.3x |
-
-UDP multicast holds steady at ~22 μs p50 while WebSocket reaches 4,785 μs at
-10,000 subscribers.
+Over real `127.0.0.1` UDP loopback sockets (500 in-order one-way datagrams
+after 50 warmup operations, `OrderBook.add_order` -> `MulticastPublisher` ->
+`MulticastSubscriber.receive_once()`), publish-to-receive delivery measured
+**49.7 μs p50** (`59.7 μs` p95, `75.5 μs` p99). Unlike WebSocket fan-out,
+multicast publisher cost stays `O(1)` regardless of subscriber count, though
+the subscriber remains a standalone reference client and is not deployed in
+Docker Compose.
 
 #### Integration Benchmarks (Requires Docker Compose)
 
