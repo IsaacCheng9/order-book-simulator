@@ -235,18 +235,26 @@ class MarketSimulator:
         Produces orders and puts them in the queue.
 
         Creates tasks for each producer to generate orders in parallel and puts
-        them into the shared order queue. When finished, sends stop signals to
-        all workers.
+        them into the shared order queue. On normal completion, sends stop
+        signals to all workers; on cancellation or stop, exits immediately so
+        shutdown cannot deadlock on a full queue.
         """
+        producer_tasks = [
+            asyncio.create_task(self._run_producer(producer))
+            for producer in self.producers
+        ]
         try:
-            producer_tasks = [
-                asyncio.create_task(self._run_producer(producer))
-                for producer in self.producers
-            ]
             await asyncio.gather(*producer_tasks)
-        finally:
-            for _ in range(self.num_workers):
-                await self.order_queue.put(None)
+        except BaseException:
+            for task in producer_tasks:
+                if not task.done() and not task.cancelling():
+                    task.cancel()
+            await asyncio.gather(*producer_tasks, return_exceptions=True)
+            raise
+        else:
+            if self.running:
+                for _ in range(self.num_workers):
+                    await self.order_queue.put(None)
 
     async def _run_producer(self, producer: RandomOrderGenerator) -> None:
         """
@@ -419,29 +427,42 @@ class MarketSimulator:
         with self.last_report_time.get_lock():
             self.last_report_time.value = self.start_time.value
 
-        # Start stats and rate adjustment tasks
+        # Start stats and rate adjustment tasks.
         stats_task = asyncio.create_task(self._report_stats())
         rate_task = asyncio.create_task(self._adjust_rate())
+        producer_task: asyncio.Task[None] | None = None
+        self.workers = []
 
         try:
-            # Start producer
+            # Start producer.
             producer_task = asyncio.create_task(self._order_producer())
 
-            # Start workers
+            # Start workers.
             self.workers = [
                 asyncio.create_task(self._order_worker(i, order_handler, session))
                 for i in range(self.num_workers)
             ]
 
-            # Wait for producer to finish
+            # Wait for producer to finish.
             await producer_task
 
-            # Wait for all orders to be processed
-            await self.order_queue.join()
-
-            # Wait for workers to finish
-            await asyncio.gather(*self.workers)
+            # Drain the queue only on normal producer completion; when
+            # self.running was cleared to stop immediately, skip draining so
+            # shutdown cannot deadlock on blocked workers or a full queue.
+            if self.running:
+                await self.order_queue.join()
+                await asyncio.gather(*self.workers)
 
         finally:
             self.running = False
-            await asyncio.gather(stats_task, rate_task)
+            tasks_to_stop: list[asyncio.Task[None]] = [stats_task, rate_task]
+            if producer_task is not None:
+                tasks_to_stop.append(producer_task)
+            tasks_to_stop.extend(self.workers)
+            for task in tasks_to_stop:
+                if not task.done() and not task.cancelling():
+                    task.cancel()
+            results = await asyncio.gather(*tasks_to_stop, return_exceptions=True)
+            for result in results:
+                if isinstance(result, Exception):
+                    logger.error(f"Simulator background task failed: {result}")
