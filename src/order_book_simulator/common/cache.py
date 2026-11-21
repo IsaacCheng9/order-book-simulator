@@ -283,10 +283,10 @@ class OrderBookCache:
         latest_seq = deserialised_deltas[-1]["sequence_number"]
 
         # Trigger snapshot fallback if Redis reset (client ahead of server),
-        # the delta tail lags current_seq, or requested history was evicted.
+        # deltas and seq_key disagree, or requested history was evicted.
         if (
             sequence_number > current_seq
-            or latest_seq < current_seq
+            or latest_seq != current_seq
             or sequence_number < oldest_seq - 1
         ):
             return None, current_seq

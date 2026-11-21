@@ -44,51 +44,58 @@ async def order_book_ws(
     try:
         send_snapshot = True
         current_sequence_number = 0
-        try:
-            if last_seen_sequence_number is not None:
+        if last_seen_sequence_number is not None:
+            try:
                 (
                     deltas,
                     current_sequence_number,
                 ) = await order_book_cache.get_deltas_since_with_sequence(
                     stock.id, last_seen_sequence_number
                 )
-                if connection.is_overflowed:
-                    return
-                if deltas is not None:
-                    await websocket.send_json(
-                        {
-                            "type": "deltas",
-                            "data": deltas,
-                            "current_sequence_number": current_sequence_number,
-                        }
+            except RedisError, OSError:
+                if not connection.is_overflowed:
+                    await websocket.close(
+                        code=1011, reason="Temporary cache error; reconnect to resync"
                     )
-                    send_snapshot = False
+                return
+            if connection.is_overflowed:
+                return
+            if deltas is not None:
+                await websocket.send_json(
+                    {
+                        "type": "deltas",
+                        "data": deltas,
+                        "current_sequence_number": current_sequence_number,
+                    }
+                )
+                send_snapshot = False
 
-            if send_snapshot:
+        if send_snapshot:
+            try:
                 (
                     snapshot,
                     current_sequence_number,
                 ) = await order_book_cache.get_order_book_with_sequence(stock.id)
-                if connection.is_overflowed:
-                    return
-                if not snapshot:
+            except RedisError, OSError:
+                if not connection.is_overflowed:
                     await websocket.close(
-                        code=1008, reason=f"No order book found for {stock.ticker}"
+                        code=1011, reason="Temporary cache error; reconnect to resync"
                     )
-                    return
-                await websocket.send_json(
-                    {
-                        "type": "snapshot",
-                        "data": snapshot,
-                        "current_sequence_number": current_sequence_number,
-                    }
-                )
-        except RedisError, OSError:
-            if not connection.is_overflowed:
+                return
+            if connection.is_overflowed:
+                return
+            if snapshot is None:
                 await websocket.close(
-                    code=1011, reason="Temporary cache error; reconnect to resync"
+                    code=1008, reason=f"No order book found for {stock.ticker}"
                 )
-            return
+                return
+            await websocket.send_json(
+                {
+                    "type": "snapshot",
+                    "data": snapshot,
+                    "current_sequence_number": current_sequence_number,
+                }
+            )
 
         if not ws_manager.complete_bootstrap(
             websocket, stock.ticker, current_sequence_number
@@ -97,7 +104,7 @@ async def order_book_ws(
 
         while True:
             await websocket.receive_text()
-    except WebSocketDisconnect, RuntimeError:
+    except WebSocketDisconnect, RuntimeError, OSError:
         pass
     finally:
         await ws_manager.unsubscribe(websocket, stock.ticker, connection=connection)

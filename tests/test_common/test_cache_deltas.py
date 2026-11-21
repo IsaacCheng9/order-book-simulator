@@ -175,3 +175,9 @@ async def test_get_deltas_since_with_sequence_falls_back_on_empty_reset_or_tail_
     deltas, seq = await order_book_cache.get_deltas_since_with_sequence(stock_id, 6)
     assert deltas is None
     assert seq == 10
+
+    # Reverse mismatch (deltas ahead of seq watermark) also forces snapshot.
+    await order_book_cache.redis.set(order_book_cache._get_delta_seq_key(stock_id), 0)
+    deltas, seq = await order_book_cache.get_deltas_since_with_sequence(stock_id, 0)
+    assert deltas is None
+    assert seq == 0

@@ -73,6 +73,12 @@ class ClientConnection:
                 self.queue.task_done()
                 if self._on_disconnect is not None:
                     self._on_disconnect(self.websocket)
+                try:
+                    await self.websocket.close(
+                        code=1011, reason="Internal send error; reconnect to resync"
+                    )
+                except RuntimeError, WebSocketDisconnect, OSError:
+                    pass
                 break
             self.queue.task_done()
 
@@ -365,6 +371,11 @@ async def redis_pubsub_delta_subscriber(
                     deltas = orjson.loads(payload)
                 except (orjson.JSONDecodeError, UnicodeDecodeError) as exc:
                     logger.warning(f"Skipping malformed Redis Pub/Sub delta: {exc}")
+                    continue
+                if not isinstance(deltas, list):
+                    logger.warning(
+                        f"Skipping non-list Redis Pub/Sub delta payload for {ticker}"
+                    )
                     continue
                 ws_manager.broadcast({"type": "deltas", "data": deltas}, ticker)
         except asyncio.CancelledError:
