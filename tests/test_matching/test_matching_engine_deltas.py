@@ -128,3 +128,34 @@ async def test_cancel_partial_level_stores_level_update(
     assert len(deltas) == 1
     assert deltas[0]["delta_type"] == "LEVEL_UPDATE"
     assert deltas[0]["quantity"] == "10"
+
+
+@pytest.mark.asyncio
+async def test_cancel_order_publishes_on_order_book_ticker(
+    matching_engine: MatchingEngine,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    """Uses the order book's canonical ticker rather than raw cancel payload."""
+    stock_id = uuid4()
+    order = create_order(stock_id)
+    await matching_engine.process_order(order)
+
+    published_channels: list[str] = []
+    original_publish = order_book_cache.publish_deltas
+
+    async def spy_publish(ticker: str, deltas):
+        published_channels.append(ticker)
+        await original_publish(ticker, deltas)
+
+    monkeypatch.setattr(order_book_cache, "publish_deltas", spy_publish)
+
+    cancel_msg = {
+        "type": "cancel",
+        "order_id": order["id"],
+        "stock_id": str(stock_id),
+        "ticker": "wrong_ticker",
+    }
+    result = await matching_engine.cancel_order(cancel_msg)
+
+    assert result["success"] is True
+    assert published_channels == ["TICKER"]

@@ -7,6 +7,7 @@ from starlette.testclient import TestClient
 
 from order_book_simulator.common.models import OrderSide, OrderType
 from order_book_simulator.gateway.app import app
+from order_book_simulator.gateway.ws_manager import ws_manager
 
 
 def _mock_stock(stock_id):
@@ -212,3 +213,36 @@ def test_ws_reconnect_evicted_sequence_falls_back_to_snapshot(
         assert data["type"] == "snapshot"
         assert "data" in data
         assert "current_sequence_number" in data
+
+
+def test_ws_lowercase_ticker_subscribes_under_canonical_ticker(
+    matching_engine, monkeypatch
+):
+    """Subscribes lowercase ticker paths under the stock's canonical ticker."""
+    stock_id = uuid4()
+    order = {
+        "id": str(uuid4()),
+        "stock_id": str(stock_id),
+        "ticker": "TICKER",
+        "price": "100.00",
+        "quantity": "10.00",
+        "side": OrderSide.BUY.value,
+        "order_type": OrderType.LIMIT.value,
+        "created_at": datetime.now(UTC),
+    }
+    asyncio.run(matching_engine.process_order(order))
+
+    _patch_db(monkeypatch, _mock_stock(stock_id))
+
+    client = TestClient(app)
+    with client.websocket_connect("/v1/ws/ticker") as ws:
+        snapshot = ws.receive_json()
+        assert snapshot["type"] == "snapshot"
+        assert ws_manager.get_connection_count("TICKER") == 1
+        assert ws_manager.get_connection_count("ticker") == 0
+
+        ws_manager.broadcast({"type": "deltas", "data": [{"seq": 2}]}, "TICKER")
+        live_update = ws.receive_json()
+        assert live_update == {"type": "deltas", "data": [{"seq": 2}]}
+
+    assert ws_manager.get_connection_count("TICKER") == 0

@@ -65,7 +65,9 @@ async def order_book_ws(
             stock.id
         )
         if not snapshot:
-            await websocket.close(code=1008, reason=f"No order book found for {ticker}")
+            await websocket.close(
+                code=1008, reason=f"No order book found for {stock.ticker}"
+            )
             return
         current_sequence_number = (
             await order_book_cache.get_current_delta_sequence_number(stock.id)
@@ -78,12 +80,12 @@ async def order_book_ws(
             }
         )
 
-    # Subscribe the client to the ticker.
-    ws_manager.subscribe(websocket, ticker)
+    # Subscribe the client under the canonical ticker used by delta publishers.
+    ws_manager.subscribe(websocket, stock.ticker)
     try:
         while True:
             await websocket.receive_text()
     except WebSocketDisconnect:
         pass
     finally:
-        await ws_manager.unsubscribe(websocket, ticker)
+        await ws_manager.unsubscribe(websocket, stock.ticker)

@@ -133,13 +133,13 @@ class MatchingEngine:
         deltas = order_book.delta_buffer.get_deltas_since(sequence_before)
         if deltas:
             await order_book_cache.store_deltas(stock_id, deltas)
-            await order_book_cache.publish_deltas(cancel_message["ticker"], deltas)
+            await order_book_cache.publish_deltas(order_book.ticker, deltas)
             self._publish_deltas_to_multicast(deltas)
 
         # Publish market data update.
         await self._publish_market_data(
             stock_id,
-            cancel_message["ticker"],
+            order_book.ticker,
             order_book,
             [],  # No trades from the cancellation.
         )

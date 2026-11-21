@@ -24,16 +24,18 @@ order_book_router = APIRouter()
 @order_book_router.delete("/orders/{order_id}")
 async def cancel_order(
     order_id: UUID,
-    stock_id: UUID,
     ticker: str,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    stock_id: UUID | None = None,
 ) -> dict[str, str]:
     """
     Cancels an existing order.
 
     Args:
         order_id: The ID of the order to cancel.
-        stock_id: The ID of the stock to cancel the order for.
         ticker: The ticker symbol of the stock to cancel the order for.
+        db: Database session.
+        stock_id: Optional stock ID validated against the resolved stock.
 
     Returns:
         Confirmation of the cancelled order.
@@ -42,7 +44,15 @@ async def cancel_order(
         raise HTTPException(
             status_code=503, detail="Order processing service is unavailable"
         )
-    await app_state.producer.cancel_order(order_id, stock_id, ticker)
+    stock = await get_stock_by_ticker(ticker, db)
+    if not stock:
+        raise HTTPException(status_code=404, detail=f"Stock ticker {ticker} not found")
+    if stock_id is not None and stock_id != stock.id:
+        raise HTTPException(
+            status_code=400,
+            detail=f"stock_id does not match ticker {stock.ticker}",
+        )
+    await app_state.producer.cancel_order(order_id, stock.id, stock.ticker)
     return {
         "status": "accepted",
         "order_id": str(order_id),

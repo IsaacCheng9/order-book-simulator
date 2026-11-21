@@ -1,8 +1,12 @@
 import asyncio
 from datetime import UTC, datetime
+from types import SimpleNamespace
+from unittest.mock import AsyncMock
 from uuid import uuid4
 
 from order_book_simulator.common.models import OrderSide, OrderType
+from order_book_simulator.gateway.app_state import app_state
+from order_book_simulator.gateway.routers import order_book_router as router_module
 
 
 def test_get_all_order_books_with_orders(test_client, matching_engine):
@@ -63,3 +67,65 @@ def test_get_all_order_books_empty(test_client):
     assert "timestamp" in data
     assert "order_books" in data
     assert len(data["order_books"]) == 0
+
+
+def test_cancel_order_derives_canonical_routing_from_stock(test_client, monkeypatch):
+    """Routes cancellations using canonical stock.id and stock.ticker."""
+    stock = SimpleNamespace(id=uuid4(), ticker="AAPL")
+    order_id = uuid4()
+    producer = AsyncMock()
+    monkeypatch.setattr(app_state, "producer", producer)
+
+    async def mock_get_stock(ticker, db):
+        assert ticker == "aapl"
+        return stock
+
+    monkeypatch.setattr(router_module, "get_stock_by_ticker", mock_get_stock)
+
+    response = test_client.delete(
+        f"/v1/order-book/orders/{order_id}",
+        params={"ticker": "aapl"},
+    )
+
+    assert response.status_code == 200
+    producer.cancel_order.assert_awaited_once_with(order_id, stock.id, "AAPL")
+
+
+def test_cancel_order_rejects_mismatched_stock_id(test_client, monkeypatch):
+    """Rejects cancellations when client stock_id disagrees with ticker."""
+    stock = SimpleNamespace(id=uuid4(), ticker="AAPL")
+    producer = AsyncMock()
+    monkeypatch.setattr(app_state, "producer", producer)
+
+    async def mock_get_stock(ticker, db):
+        return stock
+
+    monkeypatch.setattr(router_module, "get_stock_by_ticker", mock_get_stock)
+
+    response = test_client.delete(
+        f"/v1/order-book/orders/{uuid4()}",
+        params={"ticker": "AAPL", "stock_id": str(uuid4())},
+    )
+
+    assert response.status_code == 400
+    assert response.json()["detail"] == "stock_id does not match ticker AAPL"
+    producer.cancel_order.assert_not_awaited()
+
+
+def test_cancel_order_rejects_unknown_ticker(test_client, monkeypatch):
+    """Returns 404 when cancelling an order for an unknown ticker."""
+    producer = AsyncMock()
+    monkeypatch.setattr(app_state, "producer", producer)
+
+    async def mock_get_stock(ticker, db):
+        return None
+
+    monkeypatch.setattr(router_module, "get_stock_by_ticker", mock_get_stock)
+
+    response = test_client.delete(
+        f"/v1/order-book/orders/{uuid4()}",
+        params={"ticker": "NOPE"},
+    )
+
+    assert response.status_code == 404
+    producer.cancel_order.assert_not_awaited()
