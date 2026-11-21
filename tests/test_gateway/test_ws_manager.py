@@ -3,11 +3,15 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 from fastapi import WebSocketDisconnect
+from redis.exceptions import ConnectionError as RedisConnectionError
 
 from order_book_simulator.gateway import ws_manager as ws_manager_module
+from order_book_simulator.gateway.app_state import app_state
 from order_book_simulator.gateway.ws_manager import (
+    SLOW_CONSUMER_CLOSE_CODE,
     ClientConnection,
     WebSocketConnectionManager,
+    redis_pubsub_delta_subscriber,
 )
 
 
@@ -199,3 +203,174 @@ async def test_client_connection_send_loop_exits_on_dead_ws():
     assert client.sender_task.done()
 
     await client.close()
+
+
+@pytest.mark.asyncio
+async def test_overflow_disconnects_slow_consumer_and_unregisters():
+    """Disconnects overflowing clients with code 1008 and removes them."""
+    manager = WebSocketConnectionManager()
+    ws = _mock_ws()
+    ws.send_json = AsyncMock(side_effect=lambda _: asyncio.sleep(10))
+    ws.close = AsyncMock()
+    client = ClientConnection(
+        ws,
+        max_queue_size=1,
+        on_disconnect=lambda sock: manager._remove_connection(sock, "AAPL"),
+    )
+    manager.connections_per_ticker["AAPL"][ws] = client
+
+    assert client.enqueue({"seq": 1}) is True
+    assert client.enqueue({"seq": 2}) is False
+    await asyncio.sleep(0.01)
+
+    ws.close.assert_awaited_once_with(
+        code=SLOW_CONSUMER_CLOSE_CODE,
+        reason="Slow consumer; reconnect to resync",
+    )
+    assert manager.get_connection_count("AAPL") == 0
+    # Overflow cancels sender_task immediately so it never leaks.
+    assert client.sender_task.done()
+    # Unsubscribing with the retained connection closes cleanly even after
+    # _remove_connection already unregistered the socket.
+    await manager.unsubscribe(ws, "AAPL", connection=client)
+
+
+@pytest.mark.asyncio
+async def test_bootstrap_buffer_flushes_only_newer_deltas():
+    """Drops buffered deltas <= baseline_seq and forwards newer deltas."""
+    ws = _mock_ws()
+    client = ClientConnection(ws, bootstrap=True)
+
+    client.enqueue({"type": "deltas", "data": [{"sequence_number": 1}]})
+    client.enqueue(
+        {
+            "type": "deltas",
+            "data": [{"sequence_number": 2}, {"sequence_number": 3}],
+        }
+    )
+    await asyncio.sleep(0.01)
+    ws.send_json.assert_not_called()
+
+    assert client.complete_bootstrap(baseline_sequence=2) is True
+    await asyncio.sleep(0.01)
+
+    ws.send_json.assert_awaited_once_with(
+        {"type": "deltas", "data": [{"sequence_number": 3}]}
+    )
+    await client.close()
+
+
+@pytest.mark.asyncio
+async def test_redis_pubsub_subscriber_reconnects_and_updates_health(monkeypatch):
+    """Marks health degraded on Redis errors, then recovers after reconnect."""
+    attempts = 0
+    recovered = asyncio.Event()
+
+    class FakePubSub:
+        def __init__(self, should_fail: bool) -> None:
+            self.should_fail = should_fail
+
+        async def psubscribe(self, pattern: str) -> None:
+            if self.should_fail:
+                raise RedisConnectionError("redis down")
+
+        async def get_message(self, **kwargs):
+            recovered.set()
+            await asyncio.sleep(10)
+
+        async def punsubscribe(self, pattern: str) -> None:
+            return None
+
+    class FakeRedisClient:
+        def __init__(self, should_fail: bool) -> None:
+            self._pubsub = FakePubSub(should_fail)
+
+        def pubsub(self):
+            return self._pubsub
+
+        async def aclose(self) -> None:
+            return None
+
+    def fake_from_url(url: str):
+        nonlocal attempts
+        attempts += 1
+        return FakeRedisClient(should_fail=(attempts == 1))
+
+    monkeypatch.setattr(ws_manager_module.Redis, "from_url", fake_from_url)
+    app_state.redis_pubsub_healthy = False
+    app_state.redis_pubsub_error = None
+
+    task = asyncio.create_task(
+        redis_pubsub_delta_subscriber("redis://localhost:6379/0", reconnect_delay=0.01)
+    )
+    try:
+        await asyncio.wait_for(recovered.wait(), timeout=1.0)
+        assert attempts == 2
+        assert app_state.redis_pubsub_healthy is True
+        assert app_state.redis_pubsub_error is None
+    finally:
+        task.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await task
+        assert app_state.redis_pubsub_healthy is False
+
+
+@pytest.mark.asyncio
+async def test_redis_pubsub_subscriber_survives_malformed_json_message(monkeypatch):
+    """Skip malformed Pub/Sub payloads without killing the subscriber task."""
+    valid_delivered = asyncio.Event()
+    broadcasts: list[tuple[dict, str]] = []
+
+    def fake_broadcast(message: dict, ticker: str) -> None:
+        broadcasts.append((message, ticker))
+        valid_delivered.set()
+
+    messages = [
+        {"type": "pmessage", "channel": b"ws:deltas:AAPL", "data": b"not-json{{{"},
+        {
+            "type": "pmessage",
+            "channel": b"ws:deltas:AAPL",
+            "data": b'[{"sequence_number": 5}]',
+        },
+    ]
+
+    class FakePubSub:
+        async def psubscribe(self, pattern: str) -> None:
+            return None
+
+        async def get_message(self, **kwargs):
+            if messages:
+                return messages.pop(0)
+            await asyncio.sleep(10)
+
+        async def punsubscribe(self, pattern: str) -> None:
+            return None
+
+        async def aclose(self) -> None:
+            return None
+
+    class FakeRedisClient:
+        def pubsub(self):
+            return FakePubSub()
+
+        async def aclose(self) -> None:
+            return None
+
+    monkeypatch.setattr(
+        ws_manager_module.Redis, "from_url", lambda _: FakeRedisClient()
+    )
+    monkeypatch.setattr(ws_manager_module.ws_manager, "broadcast", fake_broadcast)
+
+    task = asyncio.create_task(
+        redis_pubsub_delta_subscriber("redis://localhost:6379/0", reconnect_delay=0.01)
+    )
+    try:
+        await asyncio.wait_for(valid_delivered.wait(), timeout=1.0)
+        assert app_state.redis_pubsub_healthy is True
+        assert broadcasts == [
+            ({"type": "deltas", "data": [{"sequence_number": 5}]}, "AAPL")
+        ]
+    finally:
+        task.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await task

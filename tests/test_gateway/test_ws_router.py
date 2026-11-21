@@ -5,6 +5,7 @@ from uuid import uuid4
 
 from starlette.testclient import TestClient
 
+from order_book_simulator.common.cache import order_book_cache
 from order_book_simulator.common.models import OrderSide, OrderType
 from order_book_simulator.gateway.app import app
 from order_book_simulator.gateway.ws_manager import ws_manager
@@ -246,3 +247,49 @@ def test_ws_lowercase_ticker_subscribes_under_canonical_ticker(
         assert live_update == {"type": "deltas", "data": [{"seq": 2}]}
 
     assert ws_manager.get_connection_count("TICKER") == 0
+
+
+def test_ws_bootstrap_buffers_deltas_arriving_during_snapshot_read(
+    matching_engine, monkeypatch
+):
+    """Delivers deltas published while snapshot is read without gaps or dupes."""
+    stock_id = uuid4()
+    order = {
+        "id": str(uuid4()),
+        "stock_id": str(stock_id),
+        "ticker": "TICKER",
+        "price": "100.00",
+        "quantity": "10.00",
+        "side": OrderSide.BUY.value,
+        "order_type": OrderType.LIMIT.value,
+        "created_at": datetime.now(UTC),
+    }
+    asyncio.run(matching_engine.process_order(order))
+    _patch_db(monkeypatch, _mock_stock(stock_id))
+
+    original_fetch = order_book_cache.get_order_book_with_sequence
+
+    async def interleaved_fetch(sid):
+        snapshot, seq = await original_fetch(sid)
+        # Simulate live deltas arriving during bootstrap (one stale, one newer).
+        ws_manager.broadcast(
+            {
+                "type": "deltas",
+                "data": [{"sequence_number": seq}, {"sequence_number": seq + 1}],
+            },
+            "TICKER",
+        )
+        return snapshot, seq
+
+    monkeypatch.setattr(
+        order_book_cache, "get_order_book_with_sequence", interleaved_fetch
+    )
+
+    client = TestClient(app)
+    with client.websocket_connect("/v1/ws/TICKER") as ws:
+        snapshot = ws.receive_json()
+        assert snapshot["type"] == "snapshot"
+        seq = snapshot["current_sequence_number"]
+
+        flushed = ws.receive_json()
+        assert flushed == {"type": "deltas", "data": [{"sequence_number": seq + 1}]}

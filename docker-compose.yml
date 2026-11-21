@@ -66,6 +66,8 @@ services:
         condition: service_healthy
       postgres:
         condition: service_healthy
+      redis:
+        condition: service_healthy
     environment:
       - DATABASE_URL=postgresql+asyncpg://orderbook_user:orderbook_password@postgres:5432/orderbook_db
     ports:

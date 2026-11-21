@@ -290,6 +290,39 @@ def mock_redis():
             value = mock_data.get(key)
             return value if not isinstance(value, list) else None
 
+        async def mget(self, keys: list[str]) -> list[RedisScalar | None]:
+            return [await self.get(key) for key in keys]
+
+        def pipeline(self, transaction: bool = True):
+            redis_ref = self
+
+            class _MockPipeline:
+                def __init__(self) -> None:
+                    self._ops: list[tuple[str, tuple]] = []
+
+                async def __aenter__(self):
+                    return self
+
+                async def __aexit__(self, exc_type, exc, tb) -> None:
+                    return None
+
+                def lrange(self, key: str, start: int, end: int):
+                    self._ops.append(("lrange", (key, start, end)))
+                    return self
+
+                def get(self, key: str):
+                    self._ops.append(("get", (key,)))
+                    return self
+
+                async def execute(self) -> list:
+                    results = []
+                    for op_name, args in self._ops:
+                        results.append(await getattr(redis_ref, op_name)(*args))
+                    self._ops.clear()
+                    return results
+
+            return _MockPipeline()
+
         async def keys(self, pattern: str) -> list[str]:
             if pattern == "order_book:*":
                 return [k for k in mock_data if k.startswith("order_book:")]

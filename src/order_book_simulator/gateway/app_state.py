@@ -11,6 +11,8 @@ class AppState:
         self.consumer: OrderConsumer | None = None
         self.matching_engine: MatchingEngine | None = None
         self.redis_subscriber_task: asyncio.Task | None = None
+        self.redis_pubsub_healthy: bool = False
+        self.redis_pubsub_error: str | None = None
 
 
 app_state = AppState()
