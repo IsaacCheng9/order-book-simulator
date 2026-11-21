@@ -271,8 +271,8 @@ async def run_smoke_test() -> None:
             async with asyncio.timeout(15.0):
                 snapshot_msg = await _ws_receive_json(ws)
             assert snapshot_msg["type"] == "snapshot"
-            assert snapshot_msg["sequence_number"] >= 1
-            ws_seq = snapshot_msg["sequence_number"]
+            assert snapshot_msg["current_sequence_number"] >= 1
+            ws_seq = snapshot_msg["current_sequence_number"]
 
             # Submit sell #2 with the SAME user_id and client_order_id
             # (verifies D3 non-unique client_order_id policy).
@@ -392,9 +392,9 @@ async def run_smoke_test() -> None:
 
         assert orders_before[sell_1_id]["user_id"] == user_id
         assert orders_before[sell_1_id]["client_order_id"] == duplicate_cid
-        assert Decimal(orders_before[sell_1_id]["filled_quantity"]) == Decimal(10)
+        assert Decimal(str(orders_before[sell_1_id]["filled_quantity"])) == Decimal(10)
         assert orders_before[sell_2_id]["client_order_id"] == duplicate_cid
-        assert Decimal(orders_before[sell_2_id]["filled_quantity"]) == Decimal(4)
+        assert Decimal(str(orders_before[sell_2_id]["filled_quantity"])) == Decimal(4)
         assert orders_before[sell_3_id]["status"] == "PENDING"
         assert orders_before[buy_2_id]["status"] == "PENDING"
 
@@ -409,8 +409,8 @@ async def run_smoke_test() -> None:
             return (
                 vwap is not None
                 and spread is not None
-                and Decimal(vwap) == Decimal(100)
-                and Decimal(spread) == Decimal("0.50")
+                and Decimal(str(vwap)) == Decimal(100)
+                and Decimal(str(spread)) == Decimal("0.50")
             )
 
         await _wait_for(
@@ -471,7 +471,7 @@ async def run_smoke_test() -> None:
                 async with asyncio.timeout(15.0):
                     recovered_ws_snap = await _ws_receive_json(ws)
                 assert recovered_ws_snap["type"] == "snapshot"
-                assert recovered_ws_snap["sequence_number"] == pre_crash_seq
+                assert recovered_ws_snap["current_sequence_number"] == pre_crash_seq
 
                 cancel_resp = await client.delete(
                     f"{GATEWAY_URL}/v1/order-book/orders/{sell_3_id}",
@@ -522,7 +522,7 @@ async def run_smoke_test() -> None:
                     return False
                 body = resp.json()
                 spread = body.get("spread")
-                return spread is not None and Decimal(spread) == Decimal("0.50")
+                return spread is not None and Decimal(str(spread)) == Decimal("0.50")
 
             await _wait_for(
                 "post-restart /v1/market-data/AAPL spread", post_restart_market_data
