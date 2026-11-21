@@ -106,6 +106,7 @@ class MatchingEngine:
             ask_levels=list(order_book.ask_levels.values()),
             last_trade_price=Decimal(trades[-1]["price"]) if trades else None,
             last_trade_quantity=Decimal(trades[-1]["quantity"]) if trades else None,
+            trades=trades,
         )
 
     async def cancel_order(self, cancel_message: dict[str, Any]) -> dict[str, Any]:

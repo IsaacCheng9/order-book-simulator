@@ -1,4 +1,6 @@
+import asyncio
 from datetime import UTC, datetime
+from decimal import Decimal
 from unittest.mock import AsyncMock, MagicMock
 from uuid import uuid4
 
@@ -11,6 +13,7 @@ from order_book_simulator.database.queries import (
     get_trade_analytics_by_stock,
 )
 from order_book_simulator.gateway.routers import market_data_router
+from order_book_simulator.market_data.analytics import MarketDataAnalytics
 
 
 def _assert_trade_structure(trade: dict) -> None:
@@ -314,3 +317,94 @@ def test_get_market_data(test_client, monkeypatch):
     assert data["ticker"] == ticker
     assert "bid_depth" in data
     assert "ask_depth" in data
+
+
+def test_get_market_data_returns_null_vwap_when_no_trades(
+    test_client, monkeypatch, redis_stream_client
+):
+    """Returns vwap_1min as null rather than 'nan' when no trades occurred."""
+    real_analytics = MarketDataAnalytics(redis_stream_client)
+    monkeypatch.setattr(market_data_router, "analytics", real_analytics)
+
+    stock_id = uuid4()
+
+    async def mock_get_stock(ticker, db):
+        stock = MagicMock()
+        stock.id = stock_id
+        stock.ticker = ticker.upper()
+        return stock
+
+    monkeypatch.setattr(market_data_router, "get_stock_by_ticker", mock_get_stock)
+
+    asyncio.run(
+        real_analytics.record_state_from_order_book(
+            stock_id=stock_id,
+            bid_levels=[],
+            ask_levels=[],
+            last_trade_price=None,
+            last_trade_quantity=None,
+        )
+    )
+
+    response = test_client.get("/v1/market-data/AAPL")
+    assert response.status_code == 200
+    assert response.json()["vwap_1min"] is None
+
+
+def test_get_market_data_serialises_decimal_vwap(
+    test_client, monkeypatch, redis_stream_client
+):
+    """Serialises non-null Decimal VWAP accurately through /v1/market-data."""
+    real_analytics = MarketDataAnalytics(redis_stream_client)
+    monkeypatch.setattr(market_data_router, "analytics", real_analytics)
+
+    stock_id = uuid4()
+
+    async def mock_get_stock(ticker, db):
+        stock = MagicMock()
+        stock.id = stock_id
+        stock.ticker = ticker.upper()
+        return stock
+
+    monkeypatch.setattr(market_data_router, "get_stock_by_ticker", mock_get_stock)
+
+    asyncio.run(
+        real_analytics.record_state_from_order_book(
+            stock_id=stock_id,
+            bid_levels=[],
+            ask_levels=[],
+            last_trade_price=None,
+            last_trade_quantity=None,
+            trades=[
+                {"price": Decimal("100.00"), "quantity": Decimal(10)},
+                {"price": Decimal("104.00"), "quantity": Decimal(30)},
+            ],
+        )
+    )
+
+    response = test_client.get("/v1/market-data/AAPL")
+    assert response.status_code == 200
+    assert Decimal(response.json()["vwap_1min"]) == Decimal(103)
+
+
+@pytest.mark.asyncio
+async def test_sql_trade_analytics_vwap_uses_decimal_precision():
+    """Verify SQL analytics VWAP preserves Decimal precision without float drift."""
+    stock_id = uuid4()
+    mock_db = AsyncMock()
+    mock_result = MagicMock()
+    mock_row = MagicMock()
+    mock_row.trade_count = 2
+    mock_row.total_volume = Decimal(3)
+    mock_row.total_value = Decimal("0.30")
+    mock_row.avg_price = Decimal("0.10")
+    mock_row.avg_quantity = Decimal("1.5")
+    mock_row.min_price = Decimal("0.10")
+    mock_row.max_price = Decimal("0.10")
+    mock_result.first.return_value = mock_row
+    mock_db.execute.return_value = mock_result
+
+    stock_stats = await get_trade_analytics_by_stock(stock_id, mock_db)
+    global_stats = await get_global_trade_analytics(mock_db)
+    assert stock_stats["vwap"] == "0.10"
+    assert global_stats["vwap"] == "0.10"
