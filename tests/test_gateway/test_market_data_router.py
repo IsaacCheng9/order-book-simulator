@@ -408,3 +408,56 @@ async def test_sql_trade_analytics_vwap_uses_decimal_precision():
     global_stats = await get_global_trade_analytics(mock_db)
     assert stock_stats["vwap"] == "0.10"
     assert global_stats["vwap"] == "0.10"
+
+
+@pytest.mark.parametrize("limit", [0, -1, 1001])
+@pytest.mark.parametrize(
+    "path", ["/v1/market-data/trades", "/v1/market-data/trades/AAPL"]
+)
+def test_trades_endpoints_reject_out_of_bounds_limit(test_client, path, limit):
+    """Reject non-positive or oversized limit values with HTTP 422."""
+    response = test_client.get(path, params={"limit": limit})
+    assert response.status_code == 422
+
+
+@pytest.mark.parametrize("limit", [1, 1000])
+@pytest.mark.parametrize(
+    "path", ["/v1/market-data/trades", "/v1/market-data/trades/AAPL"]
+)
+def test_trades_endpoints_accept_boundary_limit(test_client, path, limit):
+    """Accept inclusive boundary values for the trades limit parameter."""
+    response = test_client.get(path, params={"limit": limit})
+    assert response.status_code == 200
+
+
+@pytest.mark.parametrize("since_hours", [0, -5, 87601, 10**12])
+@pytest.mark.parametrize(
+    "path",
+    [
+        "/v1/market-data/global-trades-analytics",
+        "/v1/market-data/trades/AAPL/analytics",
+    ],
+)
+def test_analytics_endpoints_reject_out_of_bounds_since_hours(
+    test_client, path, since_hours
+):
+    """Reject non-positive or overflow-prone since_hours values with 422."""
+    response = test_client.get(path, params={"since_hours": since_hours})
+    assert response.status_code == 422
+
+
+@pytest.mark.parametrize("since_hours", [1, 8760, 87600])
+@pytest.mark.parametrize(
+    "path",
+    [
+        "/v1/market-data/global-trades-analytics",
+        "/v1/market-data/trades/AAPL/analytics",
+    ],
+)
+def test_analytics_endpoints_accept_boundary_since_hours(
+    test_client, path, since_hours
+):
+    """Accept valid UI and boundary values for since_hours."""
+    response = test_client.get(path, params={"since_hours": since_hours})
+    assert response.status_code == 200
+    assert response.json()["period_hours"] == since_hours

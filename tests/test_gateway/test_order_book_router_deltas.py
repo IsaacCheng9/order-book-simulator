@@ -1,9 +1,16 @@
 import asyncio
 from datetime import UTC, datetime
+from decimal import Decimal
 from unittest.mock import MagicMock
 from uuid import uuid4
 
-from order_book_simulator.common.models import OrderSide, OrderType
+from order_book_simulator.common.cache import order_book_cache
+from order_book_simulator.common.models import (
+    Delta,
+    DeltaType,
+    OrderSide,
+    OrderType,
+)
 
 
 def _mock_stock(stock_id):
@@ -105,25 +112,29 @@ def test_get_deltas_returns_empty_when_up_to_date(
     assert book_response.json()["current_delta_sequence_number"] == 1
 
 
-def test_get_deltas_snapshot_fallback(test_client, matching_engine, monkeypatch):
-    """
-    Tests that a snapshot is returned when the client is too far
-    behind.
-    """
+def test_get_deltas_snapshot_fallback(test_client, monkeypatch):
+    """Return a snapshot when the client's sequence has been evicted."""
     stock_id = uuid4()
-    # Add multiple orders to push the buffer forward.
-    for i in range(3):
-        order = {
-            "id": str(uuid4()),
-            "stock_id": str(stock_id),
-            "ticker": "TICKER",
-            "price": str(100 + i),
-            "quantity": "10.00",
-            "side": OrderSide.BUY.value,
-            "order_type": OrderType.LIMIT.value,
-            "created_at": datetime.now(UTC),
-        }
-        asyncio.run(matching_engine.process_order(order))
+    snapshot = {
+        "bids": [{"price": "100.00", "quantity": "10.00"}],
+        "asks": [],
+    }
+    evicted_window = [
+        Delta(
+            sequence_number=seq,
+            timestamp=1000.0 + seq,
+            delta_type=DeltaType.LEVEL_UPDATE,
+            ticker="TICKER",
+            side=OrderSide.BUY,
+            price=Decimal(100),
+            quantity=Decimal(10),
+            order_count=1,
+        )
+        for seq in (5, 6, 7)
+    ]
+    asyncio.run(
+        order_book_cache.store_order_book_and_deltas(stock_id, snapshot, evicted_window)
+    )
 
     async def mock_get_stock(ticker, db):
         return _mock_stock(stock_id)
@@ -133,17 +144,26 @@ def test_get_deltas_snapshot_fallback(test_client, matching_engine, monkeypatch)
         mock_get_stock,
     )
 
-    # Requesting seq -1 triggers eviction: -1 < oldest_seq - 1.
+    # Sequence 0 predates the retained window [5, 7], triggering fallback.
     response = test_client.get(
         "/v1/order-book/TICKER/deltas",
-        params={"sequence_number": -1},
+        params={"sequence_number": 0},
     )
     assert response.status_code == 200
 
     data = response.json()
-    assert "snapshot" in data
+    assert data["snapshot"] == snapshot
     assert "deltas" not in data
-    assert "current_delta_sequence_number" in data
+    assert data["current_delta_sequence_number"] == 7
+
+
+def test_get_deltas_rejects_negative_sequence_number(test_client):
+    """Reject negative sequence numbers with HTTP 422."""
+    response = test_client.get(
+        "/v1/order-book/TICKER/deltas",
+        params={"sequence_number": -1},
+    )
+    assert response.status_code == 422
 
 
 def test_get_deltas_nonexistent_stock(test_client, monkeypatch):

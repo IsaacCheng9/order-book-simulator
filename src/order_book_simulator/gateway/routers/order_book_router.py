@@ -3,7 +3,7 @@ from decimal import Decimal
 from typing import Annotated, Any
 from uuid import UUID, uuid4
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from order_book_simulator.common.cache import order_book_cache
@@ -145,7 +145,7 @@ async def get_order_books() -> dict[str, Any]:
 @order_book_router.get("/{ticker}/deltas")
 async def get_deltas(
     ticker: str,
-    sequence_number: int,
+    sequence_number: Annotated[int, Query(ge=0)],
     db: Annotated[AsyncSession, Depends(get_db)],
 ) -> dict[str, Any]:
     """

@@ -3,7 +3,7 @@ from datetime import UTC, datetime, timedelta
 from typing import Annotated, Any
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from redis.asyncio import Redis
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -31,7 +31,8 @@ analytics = MarketDataAnalytics(redis_client)
 
 @market_data_router.get("/global-trades-analytics")
 async def get_global_trade_analytics_endpoint(
-    db: Annotated[AsyncSession, Depends(get_db)], since_hours: int = 24
+    db: Annotated[AsyncSession, Depends(get_db)],
+    since_hours: Annotated[int, Query(ge=1, le=87600)] = 24,
 ) -> dict[str, Any]:
     """
     Returns trade analytics across all stocks.
@@ -102,7 +103,8 @@ async def get_all_stocks_endpoint(
 
 @market_data_router.get("/trades")
 async def get_all_recent_trades(
-    db: Annotated[AsyncSession, Depends(get_db)], limit: int = 100
+    db: Annotated[AsyncSession, Depends(get_db)],
+    limit: Annotated[int, Query(ge=1, le=1000)] = 100,
 ) -> dict[str, Any]:
     """
     Returns recent trades across all stocks.
@@ -127,7 +129,7 @@ async def get_all_recent_trades(
 async def get_stock_trades(
     ticker: str,
     db: Annotated[AsyncSession, Depends(get_db)],
-    limit: int = 100,
+    limit: Annotated[int, Query(ge=1, le=1000)] = 100,
 ) -> dict[str, Any]:
     """
     Returns recent trades for a specific stock.
@@ -160,7 +162,7 @@ async def get_stock_trades(
 async def get_stock_trade_analytics(
     ticker: str,
     db: Annotated[AsyncSession, Depends(get_db)],
-    since_hours: int = 24,
+    since_hours: Annotated[int, Query(ge=1, le=87600)] = 24,
 ) -> dict[str, Any]:
     """
     Returns trade analytics for a specific stock.
