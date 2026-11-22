@@ -1,5 +1,5 @@
-# Use the latest official PostgreSQL runtime as the parent image.
-FROM postgres:latest
+# Use the official PostgreSQL 18 runtime as the parent image.
+FROM postgres:18
 
 # Set environment variables for PostgreSQL configuration.
 ENV POSTGRES_DB=orderbook_db
