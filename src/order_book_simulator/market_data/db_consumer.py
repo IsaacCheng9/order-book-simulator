@@ -31,9 +31,7 @@ MALFORMED_MESSAGE_ERRORS = (
 
 
 class MarketDataDBConsumer:
-    """
-    Processes incoming market data from the database and routes them to the matching engine.
-    """
+    """Consume market data events from Kafka and persist them to PostgreSQL."""
 
     def __init__(
         self,
