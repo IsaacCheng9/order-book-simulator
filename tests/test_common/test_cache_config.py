@@ -90,3 +90,21 @@ async def test_order_book_cache_close_handles_mock_without_aclose():
     await cache.close()
 
     assert cache._redis is None
+
+
+@pytest.mark.asyncio
+async def test_order_book_cache_close_logs_and_clears_on_close_error(
+    caplog: pytest.LogCaptureFixture,
+):
+    """Clear _redis and log a warning without raising when aclose fails."""
+    fake_redis = AsyncMock()
+    fake_redis.aclose.side_effect = RuntimeError("redis socket closed")
+    cache = OrderBookCache()
+    cache.redis = cast(Redis, fake_redis)
+
+    with caplog.at_level("WARNING"):
+        await cache.close()
+
+    fake_redis.aclose.assert_awaited_once()
+    assert cache._redis is None
+    assert "Error closing order book cache Redis client" in caplog.text

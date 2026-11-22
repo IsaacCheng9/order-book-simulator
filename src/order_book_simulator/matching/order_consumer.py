@@ -1,6 +1,7 @@
 import asyncio
 import logging
 import os
+from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal, InvalidOperation
 from typing import Any
@@ -558,6 +559,14 @@ class OrderConsumer:
             self.consumer = None
 
 
+async def _run_cleanup(label: str, action: Callable[[], Awaitable[Any]]) -> None:
+    """Run one shutdown step without masking earlier errors or later teardowns."""
+    try:
+        await action()
+    except Exception as exc:  # noqa: BLE001
+        logger.warning(f"Error during consumer shutdown ({label}): {exc}")
+
+
 async def main() -> None:
     """Run the matching engine consumer service."""
     redis_client: Redis | None = None
@@ -602,19 +611,17 @@ async def main() -> None:
     except KeyboardInterrupt:
         logger.info("Shutting down consumer...")
     finally:
-        try:
-            if consumer is not None:
-                await consumer.stop()
-            if producer is not None and producer_started:
-                await producer.stop()
-            if multicast_publisher is not None:
-                await multicast_publisher.close()
-        finally:
-            try:
-                if redis_client is not None:
-                    await redis_client.aclose()
-            finally:
-                await order_book_cache.close()
+        if consumer is not None:
+            await _run_cleanup("stopping Kafka order consumer", consumer.stop)
+        if producer is not None and producer_started:
+            await _run_cleanup("stopping Kafka market-data producer", producer.stop)
+        if multicast_publisher is not None:
+            await _run_cleanup("closing multicast publisher", multicast_publisher.close)
+        if redis_client is not None:
+            await _run_cleanup("closing analytics Redis client", redis_client.aclose)
+        await _run_cleanup(
+            "closing order book cache Redis client", order_book_cache.close
+        )
 
 
 if __name__ == "__main__":

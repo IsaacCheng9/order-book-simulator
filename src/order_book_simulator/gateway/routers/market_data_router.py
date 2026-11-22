@@ -216,6 +216,7 @@ async def get_market_data(
     Args:
         ticker: The ticker symbol of the stock to get market data for.
         db: The database session.
+        analytics: The market data analytics service.
 
     Returns:
         A dictionary containing the market data for the given stock.

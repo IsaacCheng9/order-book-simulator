@@ -1,4 +1,5 @@
 import inspect
+import logging
 import os
 from dataclasses import asdict
 from typing import Any
@@ -6,8 +7,11 @@ from uuid import UUID
 
 import orjson
 from redis.asyncio import Redis
+from redis.exceptions import RedisError
 
 from order_book_simulator.common.models import MAX_DELTA_HISTORY, Delta
+
+logger = logging.getLogger(__name__)
 
 
 class OrderBookCache:
@@ -58,9 +62,12 @@ class OrderBookCache:
             redis_client, "close", None
         )
         if callable(close_method):
-            result = close_method()
-            if inspect.isawaitable(result):
-                await result
+            try:
+                result = close_method()
+                if inspect.isawaitable(result):
+                    await result
+            except (RedisError, OSError, RuntimeError) as exc:
+                logger.warning(f"Error closing order book cache Redis client: {exc}")
 
     def _get_deltas_key(self, stock_id: UUID) -> str:
         """Gets the Redis key for delta history."""

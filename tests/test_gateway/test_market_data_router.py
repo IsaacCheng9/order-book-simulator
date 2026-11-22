@@ -522,8 +522,55 @@ async def test_lifespan_closes_redis_clients_on_startup_failure(
         async with gateway_app.lifespan(gateway_app.app):
             pass
 
+    fake_producer.stop.assert_not_awaited()
     fake_analytics_redis.aclose.assert_awaited_once()
     cache_close.assert_awaited_once()
+    assert app_state.producer is None
+    assert app_state.redis_subscriber_task is None
+    assert app_state.analytics_redis is None
+    assert app_state.analytics is None
+
+
+@pytest.mark.asyncio
+async def test_lifespan_isolates_cleanup_failures_and_preserves_error(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    """Run every teardown step and preserve the original error when cleanup fails."""
+    fake_analytics_redis = AsyncMock()
+    fake_analytics_redis.aclose.side_effect = RuntimeError("analytics close failed")
+    fake_producer = AsyncMock()
+    fake_producer.stop.side_effect = RuntimeError("producer stop failed")
+    ws_close_all = AsyncMock(side_effect=RuntimeError("ws close failed"))
+    cache_close = AsyncMock(side_effect=RuntimeError("cache close failed"))
+
+    async def failing_subscriber(redis_url: str) -> None:
+        del redis_url
+        raise RuntimeError("subscriber crashed")
+
+    monkeypatch.setattr(gateway_app, "load_all_us_stocks", AsyncMock())
+    monkeypatch.setattr(
+        gateway_app.Redis,
+        "from_url",
+        lambda url, **kwargs: fake_analytics_redis,
+    )
+    monkeypatch.setattr(gateway_app, "OrderProducer", lambda: fake_producer)
+    monkeypatch.setattr(
+        gateway_app, "redis_pubsub_delta_subscriber", failing_subscriber
+    )
+    monkeypatch.setattr(gateway_app.ws_manager, "close_all", ws_close_all)
+    monkeypatch.setattr(gateway_app.order_book_cache, "close", cache_close)
+
+    with pytest.raises(RuntimeError, match="original app error"):
+        async with gateway_app.lifespan(gateway_app.app):
+            await asyncio.sleep(0)
+            raise RuntimeError("original app error")
+
+    ws_close_all.assert_awaited_once()
+    fake_producer.stop.assert_awaited_once()
+    fake_analytics_redis.aclose.assert_awaited_once()
+    cache_close.assert_awaited_once()
+    assert app_state.producer is None
+    assert app_state.redis_subscriber_task is None
     assert app_state.analytics_redis is None
     assert app_state.analytics is None
 

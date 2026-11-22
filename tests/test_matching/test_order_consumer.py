@@ -448,3 +448,50 @@ async def test_main_closes_all_resources_on_shutdown(
     fake_multicast.close.assert_awaited_once()
     fake_redis.aclose.assert_awaited_once()
     cache_close.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_main_isolates_cleanup_failures_and_preserves_error(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    """Close every resource and preserve the original error when teardowns fail."""
+    fake_redis = AsyncMock()
+    fake_redis.aclose.side_effect = RuntimeError("redis close failed")
+    fake_producer = AsyncMock()
+    fake_producer.stop.side_effect = RuntimeError("producer stop failed")
+    fake_multicast = AsyncMock()
+    fake_consumer = AsyncMock()
+    fake_consumer.start.side_effect = RuntimeError("consumer crashed")
+    fake_consumer.stop.side_effect = RuntimeError("consumer stop failed")
+    cache_close = AsyncMock(side_effect=RuntimeError("cache close failed"))
+
+    monkeypatch.setattr(
+        order_consumer_module.Redis,
+        "from_url",
+        lambda url, **kwargs: fake_redis,
+    )
+    monkeypatch.setattr(
+        order_consumer_module,
+        "AIOKafkaProducer",
+        lambda **kwargs: fake_producer,
+    )
+    monkeypatch.setattr(
+        order_consumer_module,
+        "MulticastPublisher",
+        lambda **kwargs: fake_multicast,
+    )
+    monkeypatch.setattr(
+        order_consumer_module,
+        "OrderConsumer",
+        lambda **kwargs: fake_consumer,
+    )
+    monkeypatch.setattr(order_consumer_module.order_book_cache, "close", cache_close)
+
+    with pytest.raises(RuntimeError, match="consumer crashed"):
+        await order_consumer_module.main()
+
+    fake_consumer.stop.assert_awaited_once()
+    fake_producer.stop.assert_awaited_once()
+    fake_multicast.close.assert_awaited_once()
+    fake_redis.aclose.assert_awaited_once()
+    cache_close.assert_awaited_once()
