@@ -1,10 +1,8 @@
-import os
 from datetime import UTC, datetime, timedelta
 from typing import Annotated, Any
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException
-from redis.asyncio import Redis
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from order_book_simulator.common.cache import order_book_cache
@@ -18,20 +16,26 @@ from order_book_simulator.database.queries import (
     get_trade_analytics_by_stock,
     get_trades_by_stock,
 )
+from order_book_simulator.gateway.app_state import app_state
 from order_book_simulator.market_data.analytics import MarketDataAnalytics
 
 market_data_router = APIRouter()
 
-# TODO: Move Redis client creation to a proper dependency
-redis_client = Redis.from_url(
-    os.getenv("REDIS_URL", "redis://redis:6379/0"), decode_responses=True
-)
-analytics = MarketDataAnalytics(redis_client)
+
+def get_analytics() -> MarketDataAnalytics:
+    """Return the gateway analytics service or raise 503 if unavailable."""
+    if app_state.analytics is None:
+        raise HTTPException(
+            status_code=503,
+            detail="Market data analytics service is unavailable",
+        )
+    return app_state.analytics
 
 
 @market_data_router.get("/global-trades-analytics")
 async def get_global_trade_analytics_endpoint(
-    db: Annotated[AsyncSession, Depends(get_db)], since_hours: int = 24
+    db: Annotated[AsyncSession, Depends(get_db)],
+    since_hours: Annotated[int, Query(ge=1, le=87600)] = 24,
 ) -> dict[str, Any]:
     """
     Returns trade analytics across all stocks.
@@ -102,7 +106,8 @@ async def get_all_stocks_endpoint(
 
 @market_data_router.get("/trades")
 async def get_all_recent_trades(
-    db: Annotated[AsyncSession, Depends(get_db)], limit: int = 100
+    db: Annotated[AsyncSession, Depends(get_db)],
+    limit: Annotated[int, Query(ge=1, le=1000)] = 100,
 ) -> dict[str, Any]:
     """
     Returns recent trades across all stocks.
@@ -127,7 +132,7 @@ async def get_all_recent_trades(
 async def get_stock_trades(
     ticker: str,
     db: Annotated[AsyncSession, Depends(get_db)],
-    limit: int = 100,
+    limit: Annotated[int, Query(ge=1, le=1000)] = 100,
 ) -> dict[str, Any]:
     """
     Returns recent trades for a specific stock.
@@ -160,7 +165,7 @@ async def get_stock_trades(
 async def get_stock_trade_analytics(
     ticker: str,
     db: Annotated[AsyncSession, Depends(get_db)],
-    since_hours: int = 24,
+    since_hours: Annotated[int, Query(ge=1, le=87600)] = 24,
 ) -> dict[str, Any]:
     """
     Returns trade analytics for a specific stock.
@@ -197,7 +202,9 @@ async def get_stock_trade_analytics(
 
 @market_data_router.get("/{ticker}")
 async def get_market_data(
-    ticker: str, db: Annotated[AsyncSession, Depends(get_db)]
+    ticker: str,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    analytics: Annotated[MarketDataAnalytics, Depends(get_analytics)],
 ) -> dict[str, Any]:
     """
     Returns current market data for a stock including:
@@ -209,6 +216,7 @@ async def get_market_data(
     Args:
         ticker: The ticker symbol of the stock to get market data for.
         db: The database session.
+        analytics: The market data analytics service.
 
     Returns:
         A dictionary containing the market data for the given stock.

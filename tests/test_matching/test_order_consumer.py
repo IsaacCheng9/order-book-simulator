@@ -375,3 +375,123 @@ async def test_start_commits_and_logs_domain_rejected_order(
     assert fake_consumer.commit_count == 1
     assert fake_consumer.stopped is True
     assert "Rejecting domain-invalid Kafka order" in caplog.text
+
+
+@pytest.mark.asyncio
+async def test_main_closes_redis_clients_when_producer_start_fails(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    """Close Redis clients if Kafka producer startup fails in main."""
+    fake_redis = AsyncMock()
+    fake_producer = AsyncMock()
+    fake_producer.start.side_effect = RuntimeError("kafka broker unavailable")
+    cache_close = AsyncMock()
+
+    monkeypatch.setattr(
+        order_consumer_module.Redis,
+        "from_url",
+        lambda url, **kwargs: fake_redis,
+    )
+    monkeypatch.setattr(
+        order_consumer_module,
+        "AIOKafkaProducer",
+        lambda **kwargs: fake_producer,
+    )
+    monkeypatch.setattr(order_consumer_module.order_book_cache, "close", cache_close)
+
+    with pytest.raises(RuntimeError, match="kafka broker unavailable"):
+        await order_consumer_module.main()
+
+    fake_producer.stop.assert_not_awaited()
+    fake_redis.aclose.assert_awaited_once()
+    cache_close.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_main_closes_all_resources_on_shutdown(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    """Stop consumer, producer, multicast, and Redis clients on shutdown."""
+    fake_redis = AsyncMock()
+    fake_producer = AsyncMock()
+    fake_multicast = AsyncMock()
+    fake_consumer = AsyncMock()
+    fake_consumer.start.side_effect = KeyboardInterrupt()
+    cache_close = AsyncMock()
+
+    monkeypatch.setattr(
+        order_consumer_module.Redis,
+        "from_url",
+        lambda url, **kwargs: fake_redis,
+    )
+    monkeypatch.setattr(
+        order_consumer_module,
+        "AIOKafkaProducer",
+        lambda **kwargs: fake_producer,
+    )
+    monkeypatch.setattr(
+        order_consumer_module,
+        "MulticastPublisher",
+        lambda **kwargs: fake_multicast,
+    )
+    monkeypatch.setattr(
+        order_consumer_module,
+        "OrderConsumer",
+        lambda **kwargs: fake_consumer,
+    )
+    monkeypatch.setattr(order_consumer_module.order_book_cache, "close", cache_close)
+
+    await order_consumer_module.main()
+
+    fake_consumer.stop.assert_awaited_once()
+    fake_producer.stop.assert_awaited_once()
+    fake_multicast.close.assert_awaited_once()
+    fake_redis.aclose.assert_awaited_once()
+    cache_close.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_main_isolates_cleanup_failures_and_preserves_error(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    """Close every resource and preserve the original error when teardowns fail."""
+    fake_redis = AsyncMock()
+    fake_redis.aclose.side_effect = RuntimeError("redis close failed")
+    fake_producer = AsyncMock()
+    fake_producer.stop.side_effect = RuntimeError("producer stop failed")
+    fake_multicast = AsyncMock()
+    fake_consumer = AsyncMock()
+    fake_consumer.start.side_effect = RuntimeError("consumer crashed")
+    fake_consumer.stop.side_effect = RuntimeError("consumer stop failed")
+    cache_close = AsyncMock(side_effect=RuntimeError("cache close failed"))
+
+    monkeypatch.setattr(
+        order_consumer_module.Redis,
+        "from_url",
+        lambda url, **kwargs: fake_redis,
+    )
+    monkeypatch.setattr(
+        order_consumer_module,
+        "AIOKafkaProducer",
+        lambda **kwargs: fake_producer,
+    )
+    monkeypatch.setattr(
+        order_consumer_module,
+        "MulticastPublisher",
+        lambda **kwargs: fake_multicast,
+    )
+    monkeypatch.setattr(
+        order_consumer_module,
+        "OrderConsumer",
+        lambda **kwargs: fake_consumer,
+    )
+    monkeypatch.setattr(order_consumer_module.order_book_cache, "close", cache_close)
+
+    with pytest.raises(RuntimeError, match="consumer crashed"):
+        await order_consumer_module.main()
+
+    fake_consumer.stop.assert_awaited_once()
+    fake_producer.stop.assert_awaited_once()
+    fake_multicast.close.assert_awaited_once()
+    fake_redis.aclose.assert_awaited_once()
+    cache_close.assert_awaited_once()

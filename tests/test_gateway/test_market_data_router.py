@@ -1,6 +1,7 @@
 import asyncio
 from datetime import UTC, datetime
 from decimal import Decimal
+from typing import Any
 from unittest.mock import AsyncMock, MagicMock
 from uuid import uuid4
 
@@ -12,6 +13,8 @@ from order_book_simulator.database.queries import (
     get_global_trade_analytics,
     get_trade_analytics_by_stock,
 )
+from order_book_simulator.gateway import app as gateway_app
+from order_book_simulator.gateway.app_state import app_state
 from order_book_simulator.gateway.routers import market_data_router
 from order_book_simulator.market_data.analytics import MarketDataAnalytics
 
@@ -306,7 +309,7 @@ def test_get_market_data(test_client, monkeypatch):
         }
     )
     mock_analytics.get_vwap = AsyncMock(return_value=150.10)
-    monkeypatch.setattr(market_data_router, "analytics", mock_analytics)
+    monkeypatch.setattr(app_state, "analytics", mock_analytics)
 
     response = test_client.get(f"/v1/market-data/{ticker}")
     assert response.status_code == 200
@@ -319,12 +322,23 @@ def test_get_market_data(test_client, monkeypatch):
     assert "ask_depth" in data
 
 
+def test_get_market_data_returns_503_when_analytics_unavailable(
+    test_client, monkeypatch
+):
+    """Return 503 when gateway analytics has not been initialised."""
+    monkeypatch.setattr(app_state, "analytics", None)
+
+    response = test_client.get("/v1/market-data/AAPL")
+    assert response.status_code == 503
+    assert response.json()["detail"] == "Market data analytics service is unavailable"
+
+
 def test_get_market_data_returns_null_vwap_when_no_trades(
     test_client, monkeypatch, redis_stream_client
 ):
     """Returns vwap_1min as null rather than 'nan' when no trades occurred."""
     real_analytics = MarketDataAnalytics(redis_stream_client)
-    monkeypatch.setattr(market_data_router, "analytics", real_analytics)
+    monkeypatch.setattr(app_state, "analytics", real_analytics)
 
     stock_id = uuid4()
 
@@ -356,7 +370,7 @@ def test_get_market_data_serialises_decimal_vwap(
 ):
     """Serialises non-null Decimal VWAP accurately through /v1/market-data."""
     real_analytics = MarketDataAnalytics(redis_stream_client)
-    monkeypatch.setattr(market_data_router, "analytics", real_analytics)
+    monkeypatch.setattr(app_state, "analytics", real_analytics)
 
     stock_id = uuid4()
 
@@ -385,6 +399,180 @@ def test_get_market_data_serialises_decimal_vwap(
     response = test_client.get("/v1/market-data/AAPL")
     assert response.status_code == 200
     assert Decimal(response.json()["vwap_1min"]) == Decimal(103)
+
+
+@pytest.mark.parametrize("limit", [0, -1, 1001])
+@pytest.mark.parametrize(
+    "path", ["/v1/market-data/trades", "/v1/market-data/trades/AAPL"]
+)
+def test_trades_endpoints_reject_out_of_bounds_limit(test_client, path, limit):
+    """Reject non-positive or oversized limit values with HTTP 422."""
+    response = test_client.get(path, params={"limit": limit})
+    assert response.status_code == 422
+
+
+@pytest.mark.parametrize("limit", [1, 1000])
+@pytest.mark.parametrize(
+    "path", ["/v1/market-data/trades", "/v1/market-data/trades/AAPL"]
+)
+def test_trades_endpoints_accept_boundary_limit(test_client, path, limit):
+    """Accept inclusive boundary values for the trades limit parameter."""
+    response = test_client.get(path, params={"limit": limit})
+    assert response.status_code == 200
+
+
+@pytest.mark.parametrize("since_hours", [0, -5, 87601, 10**12])
+@pytest.mark.parametrize(
+    "path",
+    [
+        "/v1/market-data/global-trades-analytics",
+        "/v1/market-data/trades/AAPL/analytics",
+    ],
+)
+def test_analytics_endpoints_reject_out_of_bounds_since_hours(
+    test_client, path, since_hours
+):
+    """Reject non-positive or overflow-prone since_hours values with 422."""
+    response = test_client.get(path, params={"since_hours": since_hours})
+    assert response.status_code == 422
+
+
+@pytest.mark.parametrize("since_hours", [1, 8760, 87600])
+@pytest.mark.parametrize(
+    "path",
+    [
+        "/v1/market-data/global-trades-analytics",
+        "/v1/market-data/trades/AAPL/analytics",
+    ],
+)
+def test_analytics_endpoints_accept_boundary_since_hours(
+    test_client, path, since_hours
+):
+    """Accept valid UI and boundary values for since_hours."""
+    response = test_client.get(path, params={"since_hours": since_hours})
+    assert response.status_code == 200
+    assert response.json()["period_hours"] == since_hours
+
+
+@pytest.mark.asyncio
+async def test_lifespan_initialises_and_closes_redis_clients(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    """Create analytics Redis in lifespan and close Redis clients on exit."""
+    fake_analytics_redis = AsyncMock()
+    captured_from_url: list[tuple[str, dict[str, Any]]] = []
+
+    def fake_from_url(url: str, **kwargs: Any) -> Any:
+        captured_from_url.append((url, kwargs))
+        return fake_analytics_redis
+
+    fake_producer = AsyncMock()
+    cache_close = AsyncMock()
+    ws_close_all = AsyncMock()
+
+    async def fake_subscriber(redis_url: str) -> None:
+        del redis_url
+        await asyncio.sleep(60)
+
+    monkeypatch.setenv("REDIS_URL", "redis://test-redis:6379/3")
+    monkeypatch.setattr(gateway_app, "load_all_us_stocks", AsyncMock())
+    monkeypatch.setattr(gateway_app.Redis, "from_url", fake_from_url)
+    monkeypatch.setattr(gateway_app, "OrderProducer", lambda: fake_producer)
+    monkeypatch.setattr(gateway_app, "redis_pubsub_delta_subscriber", fake_subscriber)
+    monkeypatch.setattr(gateway_app.ws_manager, "close_all", ws_close_all)
+    monkeypatch.setattr(gateway_app.order_book_cache, "close", cache_close)
+
+    async with gateway_app.lifespan(gateway_app.app):
+        assert captured_from_url == [
+            ("redis://test-redis:6379/3", {"decode_responses": True})
+        ]
+        assert app_state.analytics_redis is fake_analytics_redis
+        assert isinstance(app_state.analytics, MarketDataAnalytics)
+        assert app_state.analytics.redis is fake_analytics_redis
+
+    fake_analytics_redis.aclose.assert_awaited_once()
+    cache_close.assert_awaited_once()
+    fake_producer.stop.assert_awaited_once()
+    ws_close_all.assert_awaited_once()
+    assert app_state.analytics_redis is None
+    assert app_state.analytics is None
+
+
+@pytest.mark.asyncio
+async def test_lifespan_closes_redis_clients_on_startup_failure(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    """Clean up analytics and cache Redis clients if producer start fails."""
+    fake_analytics_redis = AsyncMock()
+    fake_producer = AsyncMock()
+    fake_producer.start.side_effect = RuntimeError("kafka unavailable")
+    cache_close = AsyncMock()
+
+    monkeypatch.setattr(gateway_app, "load_all_us_stocks", AsyncMock())
+    monkeypatch.setattr(
+        gateway_app.Redis,
+        "from_url",
+        lambda url, **kwargs: fake_analytics_redis,
+    )
+    monkeypatch.setattr(gateway_app, "OrderProducer", lambda: fake_producer)
+    monkeypatch.setattr(gateway_app.ws_manager, "close_all", AsyncMock())
+    monkeypatch.setattr(gateway_app.order_book_cache, "close", cache_close)
+
+    with pytest.raises(RuntimeError, match="kafka unavailable"):
+        async with gateway_app.lifespan(gateway_app.app):
+            pass
+
+    fake_producer.stop.assert_not_awaited()
+    fake_analytics_redis.aclose.assert_awaited_once()
+    cache_close.assert_awaited_once()
+    assert app_state.producer is None
+    assert app_state.redis_subscriber_task is None
+    assert app_state.analytics_redis is None
+    assert app_state.analytics is None
+
+
+@pytest.mark.asyncio
+async def test_lifespan_isolates_cleanup_failures_and_preserves_error(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    """Run every teardown step and preserve the original error when cleanup fails."""
+    fake_analytics_redis = AsyncMock()
+    fake_analytics_redis.aclose.side_effect = RuntimeError("analytics close failed")
+    fake_producer = AsyncMock()
+    fake_producer.stop.side_effect = RuntimeError("producer stop failed")
+    ws_close_all = AsyncMock(side_effect=RuntimeError("ws close failed"))
+    cache_close = AsyncMock(side_effect=RuntimeError("cache close failed"))
+
+    async def failing_subscriber(redis_url: str) -> None:
+        del redis_url
+        raise RuntimeError("subscriber crashed")
+
+    monkeypatch.setattr(gateway_app, "load_all_us_stocks", AsyncMock())
+    monkeypatch.setattr(
+        gateway_app.Redis,
+        "from_url",
+        lambda url, **kwargs: fake_analytics_redis,
+    )
+    monkeypatch.setattr(gateway_app, "OrderProducer", lambda: fake_producer)
+    monkeypatch.setattr(
+        gateway_app, "redis_pubsub_delta_subscriber", failing_subscriber
+    )
+    monkeypatch.setattr(gateway_app.ws_manager, "close_all", ws_close_all)
+    monkeypatch.setattr(gateway_app.order_book_cache, "close", cache_close)
+
+    with pytest.raises(RuntimeError, match="original app error"):
+        async with gateway_app.lifespan(gateway_app.app):
+            await asyncio.sleep(0)
+            raise RuntimeError("original app error")
+
+    ws_close_all.assert_awaited_once()
+    fake_producer.stop.assert_awaited_once()
+    fake_analytics_redis.aclose.assert_awaited_once()
+    cache_close.assert_awaited_once()
+    assert app_state.producer is None
+    assert app_state.redis_subscriber_task is None
+    assert app_state.analytics_redis is None
+    assert app_state.analytics is None
 
 
 @pytest.mark.asyncio

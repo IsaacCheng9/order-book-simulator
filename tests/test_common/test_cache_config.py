@@ -1,7 +1,9 @@
-from typing import Any
+from typing import Any, cast
+from unittest.mock import AsyncMock
 from uuid import uuid4
 
 import pytest
+from redis.asyncio import Redis
 
 from order_book_simulator.common.cache import OrderBookCache, order_book_cache
 
@@ -45,3 +47,64 @@ def test_order_book_cache_reads_redis_url_from_env(
     cache = OrderBookCache()
     _ = cache.redis
     assert captured_urls == ["redis://custom-redis:6380/2"]
+
+
+@pytest.mark.asyncio
+async def test_order_book_cache_close_is_noop_when_uninitialised(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    """Do not lazily open a Redis connection when closing an unused cache."""
+
+    def fail_from_url(url: str, **kwargs: Any) -> Any:
+        del url, kwargs
+        raise AssertionError("Redis.from_url must not be called during close")
+
+    monkeypatch.setattr(
+        "order_book_simulator.common.cache.Redis.from_url", fail_from_url
+    )
+
+    cache = OrderBookCache()
+    await cache.close()
+    assert cache._redis is None
+
+
+@pytest.mark.asyncio
+async def test_order_book_cache_close_calls_aclose_and_resets_client():
+    """Close an initialised Redis client with aclose and clear _redis."""
+    fake_redis = AsyncMock()
+    cache = OrderBookCache()
+    cache.redis = cast(Redis, fake_redis)
+
+    await cache.close()
+
+    fake_redis.aclose.assert_awaited_once()
+    assert cache._redis is None
+
+
+@pytest.mark.asyncio
+async def test_order_book_cache_close_handles_mock_without_aclose():
+    """Reset _redis cleanly when a test double defines no close method."""
+    cache = OrderBookCache()
+    cache.redis = cast(Redis, object())
+
+    await cache.close()
+
+    assert cache._redis is None
+
+
+@pytest.mark.asyncio
+async def test_order_book_cache_close_logs_and_clears_on_close_error(
+    caplog: pytest.LogCaptureFixture,
+):
+    """Clear _redis and log a warning without raising when aclose fails."""
+    fake_redis = AsyncMock()
+    fake_redis.aclose.side_effect = RuntimeError("redis socket closed")
+    cache = OrderBookCache()
+    cache.redis = cast(Redis, fake_redis)
+
+    with caplog.at_level("WARNING"):
+        await cache.close()
+
+    fake_redis.aclose.assert_awaited_once()
+    assert cache._redis is None
+    assert "Error closing order book cache Redis client" in caplog.text

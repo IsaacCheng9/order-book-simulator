@@ -1,6 +1,9 @@
 import asyncio
 
+from redis.asyncio import Redis
+
 from order_book_simulator.gateway.producer import OrderProducer
+from order_book_simulator.market_data.analytics import MarketDataAnalytics
 from order_book_simulator.matching.matching_engine import MatchingEngine
 from order_book_simulator.matching.order_consumer import OrderConsumer
 
@@ -10,6 +13,8 @@ class AppState:
         self.producer: OrderProducer | None = None
         self.consumer: OrderConsumer | None = None
         self.matching_engine: MatchingEngine | None = None
+        self.analytics_redis: Redis | None = None
+        self.analytics: MarketDataAnalytics | None = None
         self.redis_subscriber_task: asyncio.Task | None = None
         self.redis_pubsub_healthy: bool = False
         self.redis_pubsub_error: str | None = None
