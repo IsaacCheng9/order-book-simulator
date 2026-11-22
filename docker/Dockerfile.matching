@@ -2,16 +2,23 @@ FROM python:3.14-slim
 
 WORKDIR /app
 
+# Copy dependency manifests first so dependency installation stays cached across src edits.
 COPY pyproject.toml uv.lock README.md ./
-COPY src/ ./src/
 
+# Install uv and third-party dependencies (gcc/libc-dev/zlib1g-dev needed for aiokafka C extensions).
 RUN apt-get update && apt-get install -y --no-install-recommends \
     gcc \
     libc-dev \
     zlib1g-dev \
-    && pip install uv && uv sync --frozen \
+    && pip install --no-cache-dir uv==0.11.12 \
+    && uv sync --frozen --no-dev --no-install-project \
     && apt-get purge -y gcc libc-dev zlib1g-dev \
     && apt-get autoremove -y \
-    && rm -rf /var/lib/apt/lists/*
+    && rm -rf /var/lib/apt/lists/* /root/.cache/pip /root/.cache/uv
 
-CMD ["uv", "run", "python", "-m", "order_book_simulator.matching.order_consumer"]
+# Copy source code and install the pure-Python package without recompiling dependencies.
+COPY src/ ./src/
+RUN uv sync --frozen --no-dev && rm -rf /root/.cache/uv
+
+# Run the matching engine consumer without re-syncing dependencies at container start.
+CMD ["uv", "run", "--no-sync", "python", "-m", "order_book_simulator.matching.order_consumer"]
