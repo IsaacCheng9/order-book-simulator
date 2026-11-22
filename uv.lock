@@ -1,5 +1,5 @@
 version = 1
-revision = 3
+revision = 5
 requires-python = ">=3.14"
 resolution-markers = [
     "sys_platform == 'win32'",
@@ -706,7 +706,7 @@ wheels = [
 
 [[package]]
 name = "order-book-simulator"
-version = "0.30.2"
+version = "0.30.3"
 source = { editable = "." }
 dependencies = [
     { name = "aiohttp" },
