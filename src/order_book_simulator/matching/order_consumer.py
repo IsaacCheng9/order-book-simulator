@@ -10,6 +10,7 @@ import orjson
 from aiokafka import AIOKafkaConsumer, AIOKafkaProducer, ConsumerRecord
 from redis.asyncio import Redis
 
+from order_book_simulator.common.cache import order_book_cache
 from order_book_simulator.common.events import (
     MAX_CLIENT_ORDER_ID_LENGTH,
     MAX_TICKER_LENGTH,
@@ -557,35 +558,42 @@ class OrderConsumer:
             self.consumer = None
 
 
-async def main():
-    """Main entry point for the matching engine consumer."""
-    # Create Redis client for analytics.
-    redis_client = Redis.from_url(
-        os.getenv("REDIS_URL", "redis://redis:6379/0"), decode_responses=True
-    )
-    analytics = MarketDataAnalytics(redis_client)
-
-    bootstrap_servers = os.getenv("KAFKA_BOOTSTRAP_SERVERS", "kafka:9092")
-    # Create Kafka producer for publishing market data.
-    producer = AIOKafkaProducer(bootstrap_servers=bootstrap_servers)
-    await producer.start()
-
-    # Create the matching engine with Kafka producer and analytics and a
-    # multicast publisher for delta messages.
-    multicast_publisher = MulticastPublisher(group="239.1.1.1", port=5555)
-    matching_engine = MatchingEngine(
-        kafka_producer=producer,
-        analytics=analytics,
-        multicast_publisher=multicast_publisher,
-    )
-    consumer = OrderConsumer(
-        matching_engine=matching_engine,
-        bootstrap_servers=bootstrap_servers,
-        session_timeout_ms=10000,
-        heartbeat_interval_ms=1000,
-    )
+async def main() -> None:
+    """Run the matching engine consumer service."""
+    redis_client: Redis | None = None
+    producer: AIOKafkaProducer | None = None
+    producer_started = False
+    multicast_publisher: MulticastPublisher | None = None
+    consumer: OrderConsumer | None = None
 
     try:
+        # Create Redis client for analytics.
+        redis_client = Redis.from_url(
+            os.getenv("REDIS_URL", "redis://redis:6379/0"), decode_responses=True
+        )
+        analytics = MarketDataAnalytics(redis_client)
+
+        bootstrap_servers = os.getenv("KAFKA_BOOTSTRAP_SERVERS", "kafka:9092")
+        # Create Kafka producer for publishing market data.
+        producer = AIOKafkaProducer(bootstrap_servers=bootstrap_servers)
+        await producer.start()
+        producer_started = True
+
+        # Create the matching engine with Kafka producer and analytics and a
+        # multicast publisher for delta messages.
+        multicast_publisher = MulticastPublisher(group="239.1.1.1", port=5555)
+        matching_engine = MatchingEngine(
+            kafka_producer=producer,
+            analytics=analytics,
+            multicast_publisher=multicast_publisher,
+        )
+        consumer = OrderConsumer(
+            matching_engine=matching_engine,
+            bootstrap_servers=bootstrap_servers,
+            session_timeout_ms=10000,
+            heartbeat_interval_ms=1000,
+        )
+
         await multicast_publisher.start_heartbeat_task(interval_seconds=1.0)
         await consumer.start()
         # Keep the consumer running until the user interrupts the program.
@@ -594,9 +602,19 @@ async def main():
     except KeyboardInterrupt:
         logger.info("Shutting down consumer...")
     finally:
-        await consumer.stop()
-        await producer.stop()
-        await multicast_publisher.close()
+        try:
+            if consumer is not None:
+                await consumer.stop()
+            if producer is not None and producer_started:
+                await producer.stop()
+            if multicast_publisher is not None:
+                await multicast_publisher.close()
+        finally:
+            try:
+                if redis_client is not None:
+                    await redis_client.aclose()
+            finally:
+                await order_book_cache.close()
 
 
 if __name__ == "__main__":

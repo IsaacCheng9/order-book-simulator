@@ -1,3 +1,4 @@
+import inspect
 import os
 from dataclasses import asdict
 from typing import Any
@@ -46,6 +47,20 @@ class OrderBookCache:
     def redis(self, value: Redis) -> None:
         """Allows setting a mock Redis client for testing."""
         self._redis = value
+
+    async def close(self) -> None:
+        """Close the underlying Redis client if one has been created."""
+        if self._redis is None:
+            return
+        redis_client = self._redis
+        self._redis = None
+        close_method = getattr(redis_client, "aclose", None) or getattr(
+            redis_client, "close", None
+        )
+        if callable(close_method):
+            result = close_method()
+            if inspect.isawaitable(result):
+                await result
 
     def _get_deltas_key(self, stock_id: UUID) -> str:
         """Gets the Redis key for delta history."""
